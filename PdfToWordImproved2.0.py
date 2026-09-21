@@ -10,6 +10,8 @@ import platform
 import threading
 import multiprocessing
 import statistics
+from io import BytesIO
+from xml.sax.saxutils import escape
 import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -18,7 +20,7 @@ from docx import Document
 from docx.shared import Pt, Cm, RGBColor
 from docx.enum.section import WD_SECTION_START
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
+from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
 from pypdf import PdfReader
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -126,6 +128,18 @@ NATIVE_MIN_CHARS = int(os.environ.get("NATIVE_MIN_CHARS", "150"))
 # Share of pages that must carry text before the whole file counts as
 # born-digital.
 NATIVE_MIN_PAGE_RATIO = float(os.environ.get("NATIVE_MIN_PAGE_RATIO", "0.95"))
+# Exact layout puts every block in a text box at its measured position. The
+# page then matches the scan, but the text no longer reflows when edited.
+EXACT_LAYOUT = os.environ.get("EXACT_LAYOUT", "0") in ("1", "true", "True")
+EXTRACT_IMAGES = os.environ.get("EXTRACT_IMAGES", "1") in ("1", "true", "True")
+# An image this large IS the page scan, not a figure printed on the page.
+IMAGE_MAX_PAGE_RATIO = float(os.environ.get("IMAGE_MAX_PAGE_RATIO", "0.7"))
+HEADING_RATIO_1 = float(os.environ.get("HEADING_RATIO_1", "1.5"))
+HEADING_RATIO_2 = float(os.environ.get("HEADING_RATIO_2", "1.25"))
+# Footnotes sit low on the page and are set smaller than the body.
+FOOTNOTE_BAND = float(os.environ.get("FOOTNOTE_BAND", "0.78"))
+FOOTNOTE_MAX_RATIO = float(os.environ.get("FOOTNOTE_MAX_RATIO", "0.88"))
+FOOTNOTE_SIZE_SCALE = float(os.environ.get("FOOTNOTE_SIZE_SCALE", "0.7"))
 ARABIC_BOLD = os.environ.get("ARABIC_BOLD", "1") not in ("0", "false", "False")
 # Poetry needs the OCR line breaks; prose does not. Off by default.
 KEEP_LINE_BREAKS = os.environ.get("KEEP_LINE_BREAKS", "0") in ("1", "true", "True")
@@ -516,8 +530,9 @@ def setup_document(doc) -> None:
     for section in doc.sections:
         try:
             set_section_rtl(section)
-            setup_page(section)
-            add_page_number_footer(section)
+            if not EXACT_LAYOUT:
+                setup_page(section)
+                add_page_number_footer(section)
         except Exception as e:
             logging.warning(f"Section setup failed: {e}")
 
@@ -581,6 +596,142 @@ def running_head_texts(pages_units) -> set:
             seen[key] = seen.get(key, 0) + 1
     threshold = max(2, int(len(pages_units) * 0.6))
     return {k for k, n in seen.items() if n >= threshold}
+
+
+def heading_level(height: float, median_h: float, text: str) -> int:
+    """0 for body text, otherwise the heading level to use.
+
+    Measured against the median line height of the whole batch rather than of
+    one page: a page that is entirely title would otherwise have no heading,
+    since everything on it is tall.
+    """
+    if median_h <= 0 or len(text) > 90 or "\n" in text:
+        return 0
+    ratio = height / median_h
+    if ratio >= HEADING_RATIO_1:
+        return 1
+    if ratio >= HEADING_RATIO_2:
+        return 2
+    return 0
+
+
+def is_footnote(top: float, height: float, median_h: float) -> bool:
+    """Small type low on the page is the footnote apparatus."""
+    return (median_h > 0 and top >= FOOTNOTE_BAND
+            and height / median_h <= FOOTNOTE_MAX_RATIO)
+
+
+def add_footnote_rule(doc) -> None:
+    """The short line print uses to separate footnotes from the body."""
+    paragraph = doc.add_paragraph()
+    paragraph.paragraph_format.space_before = Pt(10)
+    pPr = paragraph._element.get_or_add_pPr()
+    borders = OxmlElement("w:pBdr")
+    top = OxmlElement("w:top")
+    top.set(qn("w:val"), "single")
+    top.set(qn("w:sz"), "6")
+    top.set(qn("w:space"), "1")
+    borders.append(top)
+    pPr.append(borders)
+
+
+def page_figures(file_path: str, page_number: int):
+    """Figures printed on the page, excluding the page scan itself."""
+    try:
+        import pymupdf
+    except ImportError:
+        return []
+    figures = []
+    try:
+        with pymupdf.open(file_path) as pdf:
+            if page_number - 1 >= len(pdf):
+                return []
+            page = pdf[page_number - 1]
+            page_area = page.rect.width * page.rect.height
+            for entry in page.get_images(full=True):
+                xref = entry[0]
+                for rect in page.get_image_rects(xref):
+                    area = rect.width * rect.height
+                    if page_area and area / page_area > IMAGE_MAX_PAGE_RATIO:
+                        continue
+                    if rect.width < 20 or rect.height < 20:
+                        continue
+                    data = pdf.extract_image(xref)
+                    figures.append((data["image"], rect))
+    except Exception as e:
+        logging.warning(f"Figure extraction failed on page {page_number}: {e}")
+    return figures
+
+
+def pdf_page_size(file_path: str, page_number: int):
+    """Page size in points, so the Word page can match the original."""
+    try:
+        import pymupdf
+        with pymupdf.open(file_path) as pdf:
+            if page_number - 1 >= len(pdf):
+                return None
+            rect = pdf[page_number - 1].rect
+            return rect.width, rect.height
+    except Exception as e:
+        logging.warning(f"Page size lookup failed: {e}")
+        return None
+
+
+_W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_V_NS = "urn:schemas-microsoft-com:vml"
+
+
+def _textbox_paragraph_xml(text: str, rtl: bool, size_pt: float,
+                           font_name: str) -> str:
+    half = str(int(round(size_pt * 2)))
+    rtl_tag = '<w:rtl w:val="1"/>' if rtl else ""
+    rpr = (f'<w:rPr><w:rFonts w:ascii="{escape(font_name)}" '
+           f'w:hAnsi="{escape(font_name)}" w:cs="{escape(font_name)}"/>'
+           f'<w:sz w:val="{half}"/><w:szCs w:val="{half}"/>{rtl_tag}</w:rPr>')
+    out = []
+    for line in text.split("\n"):
+        out.append(
+            f'<w:p><w:pPr><w:bidi w:val="{"1" if rtl else "0"}"/>'
+            f'<w:spacing w:after="0"/></w:pPr>'
+            f'<w:r>{rpr}<w:t xml:space="preserve">{escape(line)}</w:t></w:r></w:p>'
+        )
+    return "".join(out)
+
+
+def add_positioned_textbox(doc, text: str, left_pt: float, top_pt: float,
+                           width_pt: float, height_pt: float, rtl: bool,
+                           z: int) -> None:
+    """Place text at an absolute position on the page, as a borderless box."""
+    rows = text.split("\n")
+    lines = max(1, len(rows))
+    longest = max((len(r) for r in rows), default=1) or 1
+    # Fit the type to the box on both axes. Ruqaa is wider than the scanned
+    # face, so height alone would size it to overflow and clip.
+    by_height = (height_pt / lines) * 0.72
+    by_width = (width_pt / longest) / 0.46
+    size_pt = max(5.0, min(60.0, min(by_height, by_width)))
+    font_name = ARABIC_FONT if rtl else LATIN_FONT
+    # A little slack keeps a glyph from touching the edge of the box.
+    box_w = max(width_pt * 1.06, 8)
+    box_h = max(height_pt * 1.15, 8)
+    style = (f"position:absolute;margin-left:{max(left_pt - width_pt * 0.03, 0):.1f}pt;"
+             f"margin-top:{top_pt:.1f}pt;width:{box_w:.1f}pt;"
+             f"height:{box_h:.1f}pt;z-index:{z};"
+             "mso-position-horizontal-relative:page;"
+             "mso-position-vertical-relative:page")
+    xml = (
+        f'<w:p xmlns:w="{_W_NS}" xmlns:v="{_V_NS}">'
+        '<w:pPr><w:spacing w:after="0" w:line="20" w:lineRule="exact"/></w:pPr>'
+        '<w:r><w:pict>'
+        f'<v:shape style="{style}" filled="f" stroked="f">'
+        '<v:textbox inset="0,0,0,0">'
+        f'<w:txbxContent>'
+        f'{_textbox_paragraph_xml(text, rtl, size_pt, font_name)}'
+        '</w:txbxContent>'
+        '</v:textbox></v:shape>'
+        '</w:pict></w:r></w:p>'
+    )
+    doc.element.body.insert_element_before(parse_xml(xml), "w:sectPr")
 
 
 def detect_placement(left: float, right: float) -> str:
@@ -726,6 +877,12 @@ class OCRApp:
                        fg="#00FF00", selectcolor="#111111",
                        font=("Consolas", 10)).pack(anchor="w", padx=20, pady=2)
 
+        self.exact_var = tk.BooleanVar(value=EXACT_LAYOUT)
+        tk.Checkbutton(root, text="Exact Layout (looks like the scan, text does not reflow)",
+                       variable=self.exact_var, bg="#000000",
+                       fg="#00FF00", selectcolor="#111111",
+                       font=("Consolas", 10)).pack(anchor="w", padx=20, pady=2)
+
         # Buttons
         btn_frame = tk.Frame(root, bg="#000000")
         btn_frame.pack(pady=10)
@@ -789,6 +946,9 @@ class OCRApp:
         page_input = self.page_entry.get().strip()
         enable_quality = self.quality_var.get()
         cleanup = self.cleanup_var.get()
+        # The extraction helpers read this as a module-level setting.
+        global EXACT_LAYOUT
+        EXACT_LAYOUT = self.exact_var.get()
 
         if not file_path or not output_path:
             messagebox.showerror("Error", "Please select input and output files.")
@@ -1094,21 +1254,37 @@ def extract_batch(project_id, location, processor_id,
     all_units = [page_text_units(document, pg) for pg in document.pages]
     heads = running_head_texts(all_units) if DROP_RUNNING_HEADS else set()
 
+    # One median for the whole batch: a page that is all title would otherwise
+    # report no heading, since every line on it is tall.
+    batch_heights = [u[1] for units in all_units for u in units if u[1] > 0]
+    median_h = statistics.median(batch_heights) if batch_heights else 0.0
+
+    if EXACT_LAYOUT:
+        size = pdf_page_size(file_path, pages[0]) if pages else None
+        if size:
+            for section in doc.sections:
+                section.page_width = Pt(size[0])
+                section.page_height = Pt(size[1])
+                for edge in ("left_margin", "right_margin",
+                             "top_margin", "bottom_margin"):
+                    setattr(section, edge, Pt(0))
+
     for i, page in enumerate(document.pages, start=1):
         units = all_units[i - 1]
-        heights = [u[1] for u in units if u[1] > 0]
-        median_h = statistics.median(heights) if heights else 0.0
+        page_number = pages[i - 1] if i - 1 < len(pages) else i
         table_page = None
+        table_source = document
         if EXTRACT_TABLES and form_document is not None:
             if i - 1 < len(form_document.pages):
                 table_page = form_document.pages[i - 1]
+                table_source = form_document
         elif EXTRACT_TABLES:
             table_page = page
-        if table_page is not None:
-            table_source = form_document if form_document is not None else document
-            spans = table_regions(table_page, table_source)
-        else:
-            spans = []
+        spans = table_regions(table_page, table_source) if table_page else []
+
+        page_size = pdf_page_size(file_path, page_number) if EXACT_LAYOUT else None
+        rule_added = False
+        z = 1
 
         for raw_text, height, top, bottom, left, right in units:
             # Table cell text is emitted by add_tables; skip it here.
@@ -1122,19 +1298,41 @@ def extract_batch(project_id, location, processor_id,
                 refined = unwrap_lines(refined)
             if not refined.strip() or is_ocr_noise(refined):
                 continue
-            # A short, unusually tall line is almost always a heading.
-            is_heading = (
-                median_h > 0
-                and height > median_h * 1.25
-                and len(refined) <= 90
-                and "\n" not in refined
-            )
-            placement = detect_placement(left, right)
-            style = "Heading 2" if is_heading else None
+
+            if EXACT_LAYOUT and page_size:
+                page_w, page_h = page_size
+                add_positioned_textbox(
+                    doc, refined,
+                    left * page_w, top * page_h,
+                    (right - left) * page_w, (bottom - top) * page_h,
+                    detect_rtl(refined), z,
+                )
+                z += 1
+                continue
+
+            footnote = is_footnote(top, height, median_h)
+            level = 0 if footnote else heading_level(height, median_h, refined)
+            if footnote and not rule_added:
+                add_footnote_rule(doc)
+                rule_added = True
+
+            style = f"Heading {level}" if level else None
             paragraph = doc.add_paragraph(style=style)
             add_text_with_breaks(paragraph, refined)
-            apply_arabic_paragraph_format(paragraph, heading=is_heading,
-                                          placement=placement)
+            apply_arabic_paragraph_format(
+                paragraph,
+                heading=bool(level),
+                placement=detect_placement(left, right),
+                size_scale=FOOTNOTE_SIZE_SCALE if footnote else 1.0,
+            )
+
+        if EXTRACT_IMAGES and not EXACT_LAYOUT:
+            for data, rect in page_figures(file_path, page_number):
+                try:
+                    doc.add_picture(BytesIO(data), width=Pt(min(rect.width, 400)))
+                    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                except Exception as e:
+                    logging.warning(f"Could not place figure: {e}")
 
         if table_page is not None:
             add_tables(doc, table_source, table_page, cleanup_enabled)
