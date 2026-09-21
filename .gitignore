@@ -1,0 +1,7 @@
+.env
+*.json
+.venv/
+__pycache__/
+*.pyc
+ocr_gui.log
+*_part_*.docx

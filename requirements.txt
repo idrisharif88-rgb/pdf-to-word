@@ -1,0 +1,4 @@
+python-docx>=1.1.0
+pypdf>=4.2.0
+google-cloud-documentai>=2.27.0
+google-auth>=2.29.0
