@@ -675,6 +675,46 @@ def add_footnote_rule(doc) -> None:
     pPr.append(borders)
 
 
+_R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def carry_relationships(element, source_part, target_part) -> None:
+    """Re-point a copied element's relationships at the merged document.
+
+    A picture is not stored in the XML; it lives in its own package part and
+    the XML only carries a relationship id. Moving the element alone leaves
+    that id pointing at nothing, which Word draws as an empty frame.
+    """
+    for attr in ("embed", "link", "id", "pict"):
+        name = f"{{{_R_NS}}}{attr}"
+        for node in element.iter():
+            rid = node.get(name)
+            if not rid:
+                continue
+            try:
+                rel = source_part.rels[rid]
+            except KeyError:
+                continue
+            try:
+                if rel.is_external:
+                    new_rid = target_part.relate_to(
+                        rel.target_ref, rel.reltype, is_external=True)
+                else:
+                    source = rel.target_part
+                    if source.partname.startswith("/word/media/"):
+                        # Every part numbers its own images from one, so
+                        # relating the foreign part directly would write two
+                        # image1.png entries into the same package. Adding the
+                        # bytes through the merged package renames them and
+                        # drops duplicates of the same picture.
+                        source = target_part.package.image_parts \
+                            .get_or_add_image_part(BytesIO(source.blob))
+                    new_rid = target_part.relate_to(source, rel.reltype)
+                node.set(name, new_rid)
+            except Exception as e:
+                logging.warning(f"Could not carry relationship {rid}: {e}")
+
+
 def render_page_image(file_path: str, page_number: int):
     """The whole page as a picture, for layouts not worth rebuilding."""
     try:
@@ -1237,6 +1277,8 @@ class OCRApp:
                         # add a section break between every part.
                         if element.tag == qn("w:sectPr"):
                             continue
+                        carry_relationships(element, part_doc.part,
+                                            merged_doc.part)
                         if trailing_sectPr is not None:
                             trailing_sectPr.addprevious(element)
                         else:
