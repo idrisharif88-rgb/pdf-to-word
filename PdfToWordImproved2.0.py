@@ -123,6 +123,9 @@ MARGIN_BAND = float(os.environ.get("MARGIN_BAND", "0.12"))
 # that away and guess it back. Convert those directly instead.
 NATIVE_CONVERT = os.environ.get("NATIVE_CONVERT", "1") in ("1", "true", "True")
 NATIVE_MIN_CHARS = int(os.environ.get("NATIVE_MIN_CHARS", "150"))
+# Share of pages that must carry text before the whole file counts as
+# born-digital.
+NATIVE_MIN_PAGE_RATIO = float(os.environ.get("NATIVE_MIN_PAGE_RATIO", "0.95"))
 ARABIC_BOLD = os.environ.get("ARABIC_BOLD", "1") not in ("0", "false", "False")
 # Poetry needs the OCR line breaks; prose does not. Off by default.
 KEEP_LINE_BREAKS = os.environ.get("KEEP_LINE_BREAKS", "0") in ("1", "true", "True")
@@ -145,21 +148,30 @@ _PPR_AFTER_BIDI = ("w:adjustRightInd", "w:snapToGrid", "w:spacing", "w:ind",
 
 # --------------------------------------------------------------------
 # Arabic-aware text cleaner (regex based, offline)
-def has_text_layer(file_path: str, sample: int = 6) -> bool:
-    """True when the PDF carries real text rather than scanned images.
+def has_text_layer(file_path: str) -> bool:
+    """True only when essentially every page carries real text.
 
-    Watermark-only files score a handful of characters per page, so the test is
-    the average over a sample rather than the presence of any text at all.
+    An average is the wrong test. A deck of slides where most pages are text
+    and the rest are screenshots averages well above any threshold, and
+    converting it directly leaves those pages as pictures while the others
+    become text - one file, two kinds of content. A mixed file goes through
+    OCR instead, so the whole document comes out the same way.
+
+    A repeated footer also appears as text on every page, so the per-page
+    count is measured against the most common count rather than zero.
     """
     if not file_path.lower().endswith(".pdf"):
         return False
     try:
         reader = PdfReader(file_path)
-        pages = reader.pages[:sample]
-        if not pages:
+        counts = [len((pg.extract_text() or "").strip()) for pg in reader.pages]
+        if not counts:
             return False
-        total = sum(len((pg.extract_text() or "").strip()) for pg in pages)
-        return total / len(pages) >= NATIVE_MIN_CHARS
+        # The smallest page total is the boilerplate every page repeats.
+        boilerplate = min(counts)
+        real = [c - boilerplate for c in counts]
+        with_text = sum(1 for c in real if c >= NATIVE_MIN_CHARS)
+        return with_text / len(counts) >= NATIVE_MIN_PAGE_RATIO
     except Exception as e:
         logging.warning(f"Text-layer check failed: {e}")
         return False
