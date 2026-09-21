@@ -119,6 +119,10 @@ TABLE_SIZE_SCALE = float(os.environ.get("TABLE_SIZE_SCALE", "0.75"))
 # page after page; they belong to the scan, not to the text.
 DROP_RUNNING_HEADS = os.environ.get("DROP_RUNNING_HEADS", "1") in ("1", "true", "True")
 MARGIN_BAND = float(os.environ.get("MARGIN_BAND", "0.12"))
+# A born-digital PDF already holds its own text and layout; OCR would throw
+# that away and guess it back. Convert those directly instead.
+NATIVE_CONVERT = os.environ.get("NATIVE_CONVERT", "1") in ("1", "true", "True")
+NATIVE_MIN_CHARS = int(os.environ.get("NATIVE_MIN_CHARS", "150"))
 ARABIC_BOLD = os.environ.get("ARABIC_BOLD", "1") not in ("0", "false", "False")
 # Poetry needs the OCR line breaks; prose does not. Off by default.
 KEEP_LINE_BREAKS = os.environ.get("KEEP_LINE_BREAKS", "0") in ("1", "true", "True")
@@ -141,6 +145,38 @@ _PPR_AFTER_BIDI = ("w:adjustRightInd", "w:snapToGrid", "w:spacing", "w:ind",
 
 # --------------------------------------------------------------------
 # Arabic-aware text cleaner (regex based, offline)
+def has_text_layer(file_path: str, sample: int = 6) -> bool:
+    """True when the PDF carries real text rather than scanned images.
+
+    Watermark-only files score a handful of characters per page, so the test is
+    the average over a sample rather than the presence of any text at all.
+    """
+    if not file_path.lower().endswith(".pdf"):
+        return False
+    try:
+        reader = PdfReader(file_path)
+        pages = reader.pages[:sample]
+        if not pages:
+            return False
+        total = sum(len((pg.extract_text() or "").strip()) for pg in pages)
+        return total / len(pages) >= NATIVE_MIN_CHARS
+    except Exception as e:
+        logging.warning(f"Text-layer check failed: {e}")
+        return False
+
+
+def convert_native_pdf(file_path: str, output_path: str, pages) -> None:
+    """Convert a born-digital PDF straight to Word, keeping its own layout."""
+    from pdf2docx import Converter  # imported lazily; only this path needs it
+
+    converter = Converter(file_path)
+    try:
+        # pdf2docx counts pages from zero.
+        converter.convert(output_path, pages=[n - 1 for n in pages])
+    finally:
+        converter.close()
+
+
 def clean_text_smart(text: str) -> str:
     """Tidy OCR output without flattening the line structure."""
     # Control characters and bidi overrides, but keep newlines and tabs.
@@ -822,6 +858,23 @@ class OCRApp:
             output_dir = os.path.dirname(os.path.abspath(output_path))
             os.makedirs(output_dir, exist_ok=True)
             base_name = os.path.splitext(os.path.basename(output_path))[0]
+
+            if NATIVE_CONVERT and has_text_layer(file_path):
+                self.gui_log("PDF has a text layer - converting directly, "
+                             "no OCR needed.")
+                self.safe_status_update("Converting native PDF...")
+                convert_native_pdf(file_path, output_path, selected_pages)
+                self.safe_progress_update(100)
+                self.safe_status_update("Done.")
+                notify_sound()
+                self.safe_info("Success",
+                               f"Converted without OCR:\n{output_path}")
+                try:
+                    reveal_in_file_manager(output_path)
+                except Exception as e:
+                    self.gui_log(f"Auto-open failed: {e}")
+                self.root.after(3000, lambda: self.safe_status_update("Ready."))
+                return
             batch_size = 15
             total_parts = (len(selected_pages) + batch_size - 1) // batch_size
             completed = 0
