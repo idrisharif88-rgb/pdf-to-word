@@ -140,6 +140,13 @@ HEADING_RATIO_2 = float(os.environ.get("HEADING_RATIO_2", "1.25"))
 FOOTNOTE_BAND = float(os.environ.get("FOOTNOTE_BAND", "0.78"))
 FOOTNOTE_MAX_RATIO = float(os.environ.get("FOOTNOTE_MAX_RATIO", "0.88"))
 FOOTNOTE_SIZE_SCALE = float(os.environ.get("FOOTNOTE_SIZE_SCALE", "0.7"))
+# Pages to carry over as a picture instead of text: plates at the front, an
+# index at the back - anything whose layout is not worth rebuilding.
+IMAGE_PAGES = os.environ.get("IMAGE_PAGES", "")
+# A page that yields almost no text is a plate, so keep the picture rather
+# than a nearly empty page.
+IMAGE_FALLBACK_CHARS = int(os.environ.get("IMAGE_FALLBACK_CHARS", "40"))
+PAGE_IMAGE_DPI = int(os.environ.get("PAGE_IMAGE_DPI", "150"))
 ARABIC_BOLD = os.environ.get("ARABIC_BOLD", "1") not in ("0", "false", "False")
 # Poetry needs the OCR line breaks; prose does not. Off by default.
 KEEP_LINE_BREAKS = os.environ.get("KEEP_LINE_BREAKS", "0") in ("1", "true", "True")
@@ -608,6 +615,21 @@ def running_head_texts(pages_units) -> set:
     return {k for k, n in seen.items() if n >= threshold}
 
 
+def parse_image_pages(spec: str):
+    """Page numbers from a spec like "1-6,140-146"."""
+    pages = set()
+    for part in (spec or "").replace(" ", "").split(","):
+        if not part:
+            continue
+        if "-" in part:
+            start, _, end = part.partition("-")
+            if start.isdigit() and end.isdigit():
+                pages.update(range(int(start), int(end) + 1))
+        elif part.isdigit():
+            pages.add(int(part))
+    return pages
+
+
 def heading_level(height: float, median_h: float, text: str,
                   lines: int = 1, width: float = 1.0) -> int:
     """0 for body text, otherwise the heading level to use.
@@ -651,6 +673,40 @@ def add_footnote_rule(doc) -> None:
     top.set(qn("w:space"), "1")
     borders.append(top)
     pPr.append(borders)
+
+
+def render_page_image(file_path: str, page_number: int):
+    """The whole page as a picture, for layouts not worth rebuilding."""
+    try:
+        import pymupdf
+    except ImportError:
+        logging.warning("pymupdf missing; cannot render page images.")
+        return None
+    try:
+        with pymupdf.open(file_path) as pdf:
+            if page_number - 1 >= len(pdf):
+                return None
+            pix = pdf[page_number - 1].get_pixmap(dpi=PAGE_IMAGE_DPI)
+            return pix.tobytes("png")
+    except Exception as e:
+        logging.warning(f"Could not render page {page_number}: {e}")
+        return None
+
+
+def add_page_picture(doc, file_path: str, page_number: int) -> bool:
+    """Place the page image, fitted to the text measure."""
+    data = render_page_image(file_path, page_number)
+    if not data:
+        return False
+    try:
+        section = doc.sections[0]
+        usable = section.page_width - section.left_margin - section.right_margin
+        doc.add_picture(BytesIO(data), width=usable)
+        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        return True
+    except Exception as e:
+        logging.warning(f"Could not place page {page_number} image: {e}")
+        return False
 
 
 def page_figures(file_path: str, page_number: int):
@@ -895,6 +951,15 @@ class OCRApp:
                        fg="#00FF00", selectcolor="#111111",
                        font=("Consolas", 10)).pack(anchor="w", padx=20, pady=2)
 
+        tk.Label(root, text="Pages to keep as images (e.g. 1-6,140-146):",
+                 bg="#000000", fg="#00FF00",
+                 font=("Consolas", 10)).pack(anchor="w", padx=20, pady=(8, 0))
+        self.image_pages_entry = tk.Entry(root, width=30, bg="#111111",
+                                          fg="#00FF00",
+                                          insertbackground="#00FF00")
+        self.image_pages_entry.insert(0, IMAGE_PAGES)
+        self.image_pages_entry.pack(anchor="w", padx=20, pady=2)
+
         self.exact_var = tk.BooleanVar(value=EXACT_LAYOUT)
         tk.Checkbutton(root, text="Exact Layout (looks like the scan, text does not reflow)",
                        variable=self.exact_var, bg="#000000",
@@ -965,8 +1030,9 @@ class OCRApp:
         enable_quality = self.quality_var.get()
         cleanup = self.cleanup_var.get()
         # The extraction helpers read this as a module-level setting.
-        global EXACT_LAYOUT
+        global EXACT_LAYOUT, IMAGE_PAGES
         EXACT_LAYOUT = self.exact_var.get()
+        IMAGE_PAGES = self.image_pages_entry.get().strip()
 
         if not file_path or not output_path:
             messagebox.showerror("Error", "Please select input and output files.")
@@ -1271,6 +1337,7 @@ def extract_batch(project_id, location, processor_id,
 
     all_units = [page_text_units(document, pg) for pg in document.pages]
     heads = running_head_texts(all_units) if DROP_RUNNING_HEADS else set()
+    image_pages = set(parse_image_pages(IMAGE_PAGES))
 
     # One median for the whole batch: a page that is all title would otherwise
     # report no heading, since every line on it is tall.
@@ -1303,6 +1370,14 @@ def extract_batch(project_id, location, processor_id,
         page_size = pdf_page_size(file_path, page_number) if EXACT_LAYOUT else None
         rule_added = False
         z = 1
+
+        # Chosen by the user, or a page the OCR found almost nothing on.
+        page_chars = sum(len(u[0].strip()) for u in units)
+        if page_number in image_pages or page_chars < IMAGE_FALLBACK_CHARS:
+            if add_page_picture(doc, file_path, page_number):
+                if i < len(document.pages):
+                    doc.add_page_break()
+                continue
 
         for raw_text, height, top, bottom, left, right in units:
             # Table cell text is emitted by add_tables; skip it here.
