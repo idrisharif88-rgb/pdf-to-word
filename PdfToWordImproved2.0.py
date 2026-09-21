@@ -264,9 +264,13 @@ def apply_complex_script(rPr, font_name: str, size_pt: float, bold: bool,
 
 # --------------------------------------------------------------------
 # Arabic paragraph styling
+HEADING_SCALES = {1: 1.6, 2: 1.35, 3: 1.15}
+
+
 def apply_arabic_paragraph_format(paragraph, heading: bool = False,
                                   placement: str = "full",
-                                  size_scale: float = 1.0):
+                                  size_scale: float = 1.0,
+                                  level: int = 0):
     try:
         text = paragraph.text
         rtl = detect_rtl(text)
@@ -278,7 +282,10 @@ def apply_arabic_paragraph_format(paragraph, heading: bool = False,
             pPr.insert_element_before(bidi, *_PPR_AFTER_BIDI)
         bidi.set(qn("w:val"), "1" if rtl else "0")
 
-        size = (ARABIC_SIZE_PT * 1.15 if heading else ARABIC_SIZE_PT) * size_scale
+        # Direct run formatting overrides the style, so a heading has to carry
+        # its own level's size or every level would render identically.
+        scale = HEADING_SCALES.get(level, 1.15) if heading else 1.0
+        size = ARABIC_SIZE_PT * scale * size_scale
         bold = True if heading else ARABIC_BOLD
         # Justify only real running text; justifying a short line stretches the
         # words across the page.
@@ -348,7 +355,7 @@ def style_heading_levels(doc) -> None:
     Using the real styles (rather than ad-hoc bold text) is what gives you the
     Navigation pane, collapsible sections and a working table of contents.
     """
-    for level, scale in ((1, 1.6), (2, 1.35), (3, 1.15)):
+    for level, scale in sorted(HEADING_SCALES.items()):
         try:
             style = doc.styles[f"Heading {level}"]
         except KeyError:
@@ -559,7 +566,10 @@ def page_text_units(document, page):
         bottom = max((v.y for v in verts), default=0.0)
         left = min((v.x for v in verts), default=0.0)
         right = max((v.x for v in verts), default=1.0)
-        units.append((text, height, top, bottom, left, right))
+        # The box covers the whole paragraph, so its height grows with the
+        # number of printed lines. Comparing type sizes needs one line.
+        line_height = height / max(1, text.count("\n") + 1)
+        units.append((text, line_height, top, bottom, left, right))
     return units
 
 
@@ -598,14 +608,22 @@ def running_head_texts(pages_units) -> set:
     return {k for k, n in seen.items() if n >= threshold}
 
 
-def heading_level(height: float, median_h: float, text: str) -> int:
+def heading_level(height: float, median_h: float, text: str,
+                  lines: int = 1, width: float = 1.0) -> int:
     """0 for body text, otherwise the heading level to use.
 
     Measured against the median line height of the whole batch rather than of
     one page: a page that is entirely title would otherwise have no heading,
     since everything on it is tall.
     """
-    if median_h <= 0 or len(text) > 90 or "\n" in text:
+    # Height is measured per line, so a tall box no longer masquerades as a
+    # heading. A printed heading may still wrap, so a couple of lines is fine;
+    # the length limit is what separates it from a paragraph.
+    if median_h <= 0 or len(text) > 90 or lines > 3:
+        return 0
+    # A heading is set apart from the measure. A short line that still runs
+    # the full width of the page is the last line of a paragraph, not a title.
+    if width > 0.8:
         return 0
     ratio = height / median_h
     if ratio >= HEADING_RATIO_1:
@@ -1310,8 +1328,10 @@ def extract_batch(project_id, location, processor_id,
                 z += 1
                 continue
 
+            raw_lines = raw_text.count("\n") + 1
             footnote = is_footnote(top, height, median_h)
-            level = 0 if footnote else heading_level(height, median_h, refined)
+            level = 0 if footnote else heading_level(
+                height, median_h, refined, raw_lines, right - left)
             if footnote and not rule_added:
                 add_footnote_rule(doc)
                 rule_added = True
@@ -1324,6 +1344,7 @@ def extract_batch(project_id, location, processor_id,
                 heading=bool(level),
                 placement=detect_placement(left, right),
                 size_scale=FOOTNOTE_SIZE_SCALE if footnote else 1.0,
+                level=level,
             )
 
         if EXTRACT_IMAGES and not EXACT_LAYOUT:
