@@ -1,20 +1,24 @@
-"""Theme colours and the custom round widgets (white + dark green)."""
+"""Theme colours and the custom round widgets (Linux off-white + dark green).
+
+The greys follow GNOME's Adwaita palette, so the window sits naturally next
+to other Linux apps.
+"""
 from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
 
-BG = "#F3F7F4"           # window background
-CARD = "#FFFFFF"         # card background
-FIELD = "#F8FBF9"        # entry background
+BG = "#EBEBED"           # window background (Adwaita headerbar grey)
+CARD = "#F6F5F4"         # card background (Adwaita window off-white)
+FIELD = "#FAFAFA"        # entry background
 GREEN = "#0B5D3B"        # primary dark green
 GREEN_HOVER = "#0F7549"
 GREEN_PRESSED = "#084A2F"
-GREEN_LIGHT = "#E2F0E7"
-TEXT = "#1B2A22"
-MUTED = "#6A7D72"
-BORDER = "#D6E4DB"
-DISABLED = "#B9CABF"
+GREEN_LIGHT = "#DCEBE1"
+TEXT = "#241F31"         # Adwaita dark text
+MUTED = "#77767B"
+BORDER = "#DEDDDA"
+DISABLED = "#C0BFBC"
 
 
 def pick_font_family(root) -> str:
