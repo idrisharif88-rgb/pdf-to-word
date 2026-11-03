@@ -29,7 +29,34 @@ class TextUnit:
 
     @property
     def line_count(self) -> int:
-        return self.text.count("\n") + 1
+        return count_lines(self.text)
+
+
+def count_lines(text: str) -> int:
+    """Printed lines in an OCR paragraph. Document AI ends every paragraph
+    with a newline; counting it would halve a one-line heading's height."""
+    return text.strip("\n").count("\n") + 1
+
+
+_FOLIO_RE = re.compile(r"[\s\-–—()\[\]]*\d{1,4}[\s\-–—()\[\]]*")
+
+
+def is_folio(text: str, top: float, bottom: float, band: float) -> bool:
+    """A printed page number: only digits (Arabic-Indic too), in the top or
+    bottom margin band."""
+    in_band = top <= band or bottom >= 1.0 - band
+    return in_band and bool(_FOLIO_RE.fullmatch(text.strip()))
+
+
+def continues_heading(prev_top: float, prev_bottom: float,
+                      prev_line_height: float, prev_placement: str,
+                      top: float, placement: str, text: str) -> bool:
+    """A short line set just below a heading, in the same position, is the
+    heading's second line (often in a smaller size)."""
+    gap = top - prev_bottom
+    return (len(text) <= 60 and placement == prev_placement
+            and placement in ("center", "left", "right")
+            and 0 <= gap <= max(prev_line_height, 0.03))
 
 
 def clean_text_smart(text: str) -> str:

@@ -29,6 +29,13 @@ class DocumentAIClient:
         # Imported here so tests and the GUI start without the SDK loaded.
         from google.cloud import documentai  # type: ignore
 
+        missing = [name for name, value in (
+            ("GCP_PROJECT_ID", settings.gcp_project_id),
+            ("GCP_PROCESSOR_ID", settings.gcp_processor_id)) if not value]
+        if missing:
+            raise ValueError(
+                f"Missing {', '.join(missing)}. Copy .env.example to .env "
+                "and fill in your own Google Cloud IDs.")
         self._dai = documentai
         self.settings = settings
         self._client = client or self._make_client()
