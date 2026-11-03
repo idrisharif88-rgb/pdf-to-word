@@ -22,7 +22,7 @@ def main() -> int:
 
     try:
         settings = Settings.from_env()
-        root = tk.Tk()
+        root = tk.Tk(className="pdf-to-word")  # matches StartupWMClass
         from .gui.app import OCRApp
         OCRApp(root, settings)
         root.after(200, root.focus_force)

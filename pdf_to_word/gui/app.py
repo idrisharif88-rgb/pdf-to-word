@@ -9,6 +9,7 @@ import os
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from pathlib import Path
 from typing import Optional
 
 from .. import pdf_tools
@@ -17,11 +18,12 @@ from ..desktop import (NoNativeDialog, native_file_dialog, notify_sound,
                        reveal_in_file_manager)
 from ..pipeline import ConversionJob, JobCancelled
 from ..text import parse_page_range
-from .widgets import (BG, BORDER, CARD, FIELD, GREEN, MUTED, TEXT,
+from .widgets import (BG, BORDER, CARD, FIELD, FIELD_BORDER, GREEN, MUTED, TEXT,
                       RoundButton, Toggle, apply_theme, pick_font_family)
 
 log = logging.getLogger(__name__)
 LOG_LINES_KEPT = 200
+ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 
 class OCRApp:
@@ -32,6 +34,7 @@ class OCRApp:
         self._picking = False  # one file chooser at a time
         apply_theme(root)
         root.title("PDF to Word — Arabic OCR")
+        self._set_window_icon()
         root.geometry("920x800")
         root.minsize(820, 720)
 
@@ -44,6 +47,16 @@ class OCRApp:
         self.f_hint = (family, 9)
         self.f_btn = (family, 11, "bold")
         self._build()
+
+    def _set_window_icon(self) -> None:
+        """Window and dock icon (Scan to text); kept on self so Tk's
+        PhotoImage is not garbage-collected."""
+        try:
+            self._icons = [tk.PhotoImage(file=str(ASSETS / f"icon-{n}.png"))
+                           for n in (256, 64, 32)]
+            self.root.iconphoto(True, *self._icons)
+        except tk.TclError:
+            log.warning("Window icon not set", exc_info=True)
 
     # ================================================================ layout
     def _build(self) -> None:
@@ -129,7 +142,7 @@ class OCRApp:
         inner.pack(fill="both", expand=True, padx=16, pady=(0, 14))
         self.log_box = tk.Text(inner, height=8, bg=FIELD, fg=TEXT,
                                font=("DejaVu Sans Mono", 9), relief="flat",
-                               highlightthickness=1, highlightbackground=BORDER,
+                               highlightthickness=1, highlightbackground=FIELD_BORDER,
                                padx=8, pady=6, state="disabled")
         scroll = ttk.Scrollbar(inner, command=self.log_box.yview,
                                style="Log.Vertical.TScrollbar")
@@ -156,7 +169,7 @@ class OCRApp:
     def _entry(self, parent):
         return tk.Entry(parent, bg=FIELD, fg=TEXT, insertbackground=GREEN,
                         relief="flat", highlightthickness=1,
-                        highlightbackground=BORDER, highlightcolor=GREEN,
+                        highlightbackground=FIELD_BORDER, highlightcolor=GREEN,
                         font=self.f_body)
 
     def _field_row(self, parent, label, button_text, command):

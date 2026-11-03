@@ -1,24 +1,29 @@
-"""Theme colours and the custom round widgets (Linux off-white + dark green).
+"""Theme colours and the custom round widgets.
 
-The greys follow GNOME's Adwaita palette, so the window sits naturally next
-to other Linux apps.
+Grey ground taken from the Yaru Files icon (#A0A0A0) with dark-green
+actions. Fields are grey too, set apart only by a darker border.
 """
 from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
 
-BG = "#EBEBED"           # window background (Adwaita headerbar grey)
-CARD = "#F6F5F4"         # card background (Adwaita window off-white)
-FIELD = "#FAFAFA"        # entry background
+BG = "#A0A0A0"           # window background (Yaru Files icon grey)
+CARD = "#AAAAAA"         # card background
+FIELD = "#AAAAAA"        # entry / log background: same grey, no white boxes
+FIELD_BORDER = "#7A7A7A"
 GREEN = "#0B5D3B"        # primary dark green
 GREEN_HOVER = "#0F7549"
 GREEN_PRESSED = "#084A2F"
-GREEN_LIGHT = "#DCEBE1"
-TEXT = "#241F31"         # Adwaita dark text
-MUTED = "#77767B"
-BORDER = "#DEDDDA"
-DISABLED = "#C0BFBC"
+GREEN_LIGHT = "#B9CDBF"  # hover tint behind outline buttons
+TEXT = "#1C1C1C"
+MUTED = "#383838"
+BORDER = "#8E8E8E"
+DISABLED = "#8A8A8A"
+DISABLED_TEXT = "#D6D6D6"
+TRACK_OFF = "#7C7C7C"
+TRACK_DISABLED = "#929292"
+TROUGH = "#8A8A8A"
 
 
 def pick_font_family(root) -> str:
@@ -72,7 +77,7 @@ class RoundButton(tk.Canvas):
     def _draw(self):
         self.delete("all")
         if self._state == "disabled":
-            fill, outline, fg = DISABLED, DISABLED, "#FFFFFF"
+            fill, outline, fg = DISABLED, DISABLED, DISABLED_TEXT
         elif self._filled:
             fill = (GREEN_PRESSED if self._pressed
                     else GREEN_HOVER if self._hover else GREEN)
@@ -124,7 +129,7 @@ class Toggle(tk.Frame):
         c = self.cv
         c.delete("all")
         on = bool(self.var.get())
-        track = (GREEN if on else "#C8D6CD") if self.enabled else "#E3EAE6"
+        track = (GREEN if on else TRACK_OFF) if self.enabled else TRACK_DISABLED
         round_rect(c, 1, 1, 45, 25, 12, fill=track, outline="")
         x = 32 if on else 14
         c.create_oval(x - 10, 3, x + 10, 23, fill="#FFFFFF", outline="")
@@ -138,9 +143,9 @@ def apply_theme(root):
     root.configure(bg=BG)
     style = ttk.Style()
     style.theme_use("clam")
-    style.configure("Green.Horizontal.TProgressbar", troughcolor=GREEN_LIGHT,
-                    background=GREEN, bordercolor=GREEN_LIGHT,
+    style.configure("Green.Horizontal.TProgressbar", troughcolor=TROUGH,
+                    background=GREEN, bordercolor=TROUGH,
                     lightcolor=GREEN, darkcolor=GREEN, thickness=10)
     style.configure("Log.Vertical.TScrollbar", troughcolor=CARD,
-                    background=GREEN_LIGHT, bordercolor=CARD,
+                    background=BORDER, bordercolor=CARD,
                     arrowcolor=GREEN)
