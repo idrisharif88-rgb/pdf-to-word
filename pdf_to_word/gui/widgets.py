@@ -17,7 +17,8 @@ GREEN_HOVER = "#0F7549"
 GREEN_PRESSED = "#084A2F"
 GREEN_LIGHT = "#5F7A69"  # hover tint behind outline buttons
 ACCENT = "#A8E6C3"       # light green for text/outlines on the dark grey
-TEXT = "#F4F4F4"
+WHITE = "#FFFFFF"
+TEXT = WHITE
 MUTED = "#D2D2D2"
 BORDER = "#585858"
 DISABLED = "#5C5C5C"
@@ -78,14 +79,14 @@ class RoundButton(tk.Canvas):
     def _draw(self):
         self.delete("all")
         if self._state == "disabled":
-            fill, outline, fg = DISABLED, DISABLED, DISABLED_TEXT
+            fill, outline, fg = DISABLED, DISABLED_TEXT, DISABLED_TEXT
         elif self._filled:
             fill = (GREEN_PRESSED if self._pressed
                     else GREEN_HOVER if self._hover else GREEN)
-            outline, fg = fill, "#FFFFFF"
+            outline, fg = WHITE, WHITE
         else:
             fill = GREEN_LIGHT if (self._hover or self._pressed) else self["bg"]
-            outline, fg = ACCENT, ACCENT
+            outline, fg = WHITE, WHITE
         round_rect(self, 2, 2, self._bw - 2, self._bh - 2, (self._bh - 4) / 2,
                    fill=fill, outline=outline, width=2)
         self.create_text(self._bw / 2, self._bh / 2, text=self._text,
@@ -149,4 +150,71 @@ def apply_theme(root):
                     lightcolor=GREEN, darkcolor=GREEN, thickness=10)
     style.configure("Log.Vertical.TScrollbar", troughcolor=CARD,
                     background=BORDER, bordercolor=CARD,
-                    arrowcolor=ACCENT)
+                    arrowcolor=WHITE)
+
+
+class RoundBox(tk.Canvas):
+    """Rounded outline that hosts one child widget (an Entry or Text).
+
+    Tk widgets cannot have rounded corners themselves, so the child is drawn
+    borderless inside a canvas that paints the rounded border and turns the
+    border ``focus_color`` while the child has keyboard focus.
+    """
+
+    def __init__(self, parent, height=None, radius=12, pad=8,
+                 border=BORDER, focus_color=WHITE):
+        kw = {"height": height} if height else {}
+        super().__init__(parent, bg=parent["bg"], highlightthickness=0, **kw)
+        self._radius, self._pad = radius, pad
+        self._border, self._focus_color = border, focus_color
+        self._focused = False
+        self.child = None
+        self.bind("<Configure>", lambda e: self._draw())
+
+    def host(self, child):
+        self.child = child
+        self._win = self.create_window(0, 0, window=child, anchor="nw")
+        child.bind("<FocusIn>", lambda e: self._focus(True), add="+")
+        child.bind("<FocusOut>", lambda e: self._focus(False), add="+")
+        self._draw()
+        return child
+
+    def _focus(self, on):
+        self._focused = on
+        self._draw()
+
+    def _draw(self):
+        w, h = self.winfo_width(), self.winfo_height()
+        tk.Canvas.delete(self, "frame")  # RoundEntry overrides delete()
+        if w < 4 or h < 4:
+            return
+        r = min(self._radius, h / 2 - 1)
+        color = self._focus_color if self._focused else self._border
+        round_rect(self, 1, 1, w - 1, h - 1, r, fill=self["bg"],
+                   outline=color, width=1.5, tags="frame")
+        self.tag_lower("frame")
+        if self.child is not None:
+            p = self._pad
+            self.coords(self._win, p + r / 3, p / 2)
+            self.itemconfigure(self._win, width=max(1, w - 2 * (p + r / 3)),
+                               height=max(1, h - p))
+
+
+class RoundEntry(RoundBox):
+    """A single-line text field with rounded corners; behaves like Entry
+    for get/insert/delete."""
+
+    def __init__(self, parent, font=None, height=38):
+        super().__init__(parent, height=height, radius=height / 2 - 1)
+        self.entry = self.host(tk.Entry(
+            self, bg=FIELD, fg=TEXT, insertbackground=WHITE, relief="flat",
+            bd=0, highlightthickness=0, font=font))
+
+    def get(self):
+        return self.entry.get()
+
+    def insert(self, index, text):
+        return self.entry.insert(index, text)
+
+    def delete(self, first, last=None):
+        return self.entry.delete(first, last)

@@ -18,7 +18,7 @@ from ..desktop import (NoNativeDialog, native_file_dialog, notify_sound,
                        reveal_in_file_manager)
 from ..pipeline import ConversionJob, JobCancelled
 from ..text import parse_page_range
-from .widgets import (ACCENT, BG, BORDER, CARD, FIELD, FIELD_BORDER, GREEN, MUTED, TEXT,
+from .widgets import (BG, CARD, FIELD, MUTED, TEXT, RoundBox, RoundEntry,
                       RoundButton, Toggle, apply_theme, pick_font_family)
 
 log = logging.getLogger(__name__)
@@ -35,7 +35,6 @@ class OCRApp:
         apply_theme(root)
         root.title("PDF to Word — Arabic OCR")
         self._set_window_icon()
-        root.geometry("920x800")
         root.minsize(820, 720)
 
         family = pick_font_family(root)
@@ -47,6 +46,16 @@ class OCRApp:
         self.f_hint = (family, 9)
         self.f_btn = (family, 11, "bold")
         self._build()
+        self._fit_window()
+
+    def _fit_window(self) -> None:
+        """Open just tall enough for the content, never taller than the
+        screen allows."""
+        self.root.update_idletasks()
+        width = max(920, self.root.winfo_reqwidth())
+        height = min(self.root.winfo_reqheight(),
+                     self.root.winfo_screenheight() - 80)
+        self.root.geometry(f"{width}x{height}")
 
     def _set_window_icon(self) -> None:
         """Window and dock icon (Scan to text); kept on self so Tk's
@@ -63,38 +72,38 @@ class OCRApp:
         root, s = self.root, self.settings
         header = tk.Frame(root, bg=BG)
         header.pack(fill="x")
-        tk.Label(header, text="PDF  →  Word", bg=BG, fg=ACCENT,
-                 font=self.f_title).pack(anchor="w", padx=24, pady=(16, 0))
+        tk.Label(header, text="PDF  →  Word", bg=BG, fg=TEXT,
+                 font=self.f_title).pack(anchor="w", padx=24, pady=(12, 0))
         tk.Label(header, text="Arabic OCR · Google Document AI", bg=BG,
                  fg=MUTED, font=self.f_sub).pack(anchor="w", padx=24,
                                                      pady=(0, 16))
 
         body = tk.Frame(root, bg=BG)
-        body.pack(fill="both", expand=True, padx=20, pady=16)
+        body.pack(fill="both", expand=True, padx=20, pady=(6, 10))
         body.columnconfigure(0, weight=1, uniform="col")
         body.columnconfigure(1, weight=1, uniform="col")
         body.rowconfigure(4, weight=1)
 
         files = self._card(body, "Files")
-        files.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        files.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
         self.file_entry = self._field_row(files, "Input file (PDF or image)",
                                           "Browse", self.browse_file)
         self.output_entry = self._field_row(files, "Output Word file",
                                             "Change", self.choose_output)
 
         pages = self._card(body, "Pages")
-        pages.grid(row=1, column=0, sticky="nsew", padx=(0, 6), pady=(0, 12))
+        pages.grid(row=1, column=0, sticky="nsew", padx=(0, 6), pady=(0, 6))
         self._label(pages, "Page range", "all, 1-5, 2,5,7")
         self.page_entry = self._entry(pages)
         self.page_entry.insert(0, "all")
-        self.page_entry.pack(fill="x", padx=16, pady=(0, 10), ipady=6)
+        self.page_entry.pack(fill="x", padx=16, pady=(0, 10))
         self._label(pages, "Keep as pictures", "e.g. 1-6,140-146")
         self.image_pages_entry = self._entry(pages)
         self.image_pages_entry.insert(0, s.image_pages)
-        self.image_pages_entry.pack(fill="x", padx=16, pady=(0, 16), ipady=6)
+        self.image_pages_entry.pack(fill="x", padx=16, pady=(0, 16))
 
         options = self._card(body, "Options")
-        options.grid(row=1, column=1, sticky="nsew", padx=(6, 0), pady=(0, 12))
+        options.grid(row=1, column=1, sticky="nsew", padx=(6, 0), pady=(0, 6))
         self.quality_var = tk.BooleanVar(value=s.enable_quality_scores)
         self.cleanup_var = tk.BooleanVar(value=s.cleanup)
         self.exact_var = tk.BooleanVar(value=s.exact_layout)
@@ -113,10 +122,10 @@ class OCRApp:
         ):
             Toggle(options, text, var, hint=hint, enabled=enabled,
                    font=self.f_label, hint_font=self.f_hint)\
-                .pack(anchor="w", padx=16, pady=(0, 10))
+                .pack(anchor="w", padx=16, pady=(0, 6))
 
         actions = tk.Frame(body, bg=BG)
-        actions.grid(row=2, column=0, columnspan=2, pady=(4, 10))
+        actions.grid(row=2, column=0, columnspan=2, pady=(2, 6))
         self.run_btn = RoundButton(actions, "Run OCR", self.run_ocr,
                                    width=170, height=44, font=self.f_btn)
         self.run_btn.grid(row=0, column=0, padx=8)
@@ -129,31 +138,32 @@ class OCRApp:
         status = tk.Frame(body, bg=BG)
         status.grid(row=3, column=0, columnspan=2, sticky="ew")
         self.status_label = tk.Label(status, text="Ready.", anchor="w",
-                                     fg=ACCENT, bg=BG, font=self.f_label)
+                                     fg=TEXT, bg=BG, font=self.f_label)
         self.status_label.pack(fill="x", pady=(0, 6))
         self.progress_var = tk.DoubleVar()
         ttk.Progressbar(status, variable=self.progress_var, maximum=100,
                         style="Green.Horizontal.TProgressbar")\
-            .pack(fill="x", pady=(0, 12))
+            .pack(fill="x", pady=(0, 6))
 
         log_card = self._card(body, "Activity")
         log_card.grid(row=4, column=0, columnspan=2, sticky="nsew")
-        inner = tk.Frame(log_card, bg=CARD)
-        inner.pack(fill="both", expand=True, padx=16, pady=(0, 14))
+        log_frame = RoundBox(log_card, height=150, radius=14, pad=12)
+        log_frame.pack(fill="both", expand=True, padx=16, pady=(0, 14))
+        inner = tk.Frame(log_frame, bg=FIELD)
         self.log_box = tk.Text(inner, height=8, bg=FIELD, fg=TEXT,
                                font=("DejaVu Sans Mono", 9), relief="flat",
-                               highlightthickness=1, highlightbackground=FIELD_BORDER,
-                               padx=8, pady=6, state="disabled")
+                               bd=0, highlightthickness=0, state="disabled")
         scroll = ttk.Scrollbar(inner, command=self.log_box.yview,
                                style="Log.Vertical.TScrollbar")
         self.log_box.config(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
         self.log_box.pack(side="left", fill="both", expand=True)
+        log_frame.host(inner)
 
     def _card(self, parent, title):
         card = tk.Frame(parent, bg=CARD)  # a group, not a box
-        tk.Label(card, text=title, bg=CARD, fg=ACCENT, font=self.f_card)\
-            .pack(anchor="w", padx=16, pady=(12, 8))
+        tk.Label(card, text=title, bg=CARD, fg=TEXT, font=self.f_card)\
+            .pack(anchor="w", padx=16, pady=(6, 4))
         return card
 
     def _label(self, parent, text, hint=""):
@@ -166,17 +176,14 @@ class OCRApp:
                      font=self.f_hint).pack(side="left")
 
     def _entry(self, parent):
-        return tk.Entry(parent, bg=FIELD, fg=TEXT, insertbackground=ACCENT,
-                        relief="flat", highlightthickness=1,
-                        highlightbackground=FIELD_BORDER, highlightcolor=ACCENT,
-                        font=self.f_body)
+        return RoundEntry(parent, font=self.f_body)
 
     def _field_row(self, parent, label, button_text, command):
         self._label(parent, label)
         row = tk.Frame(parent, bg=CARD)
-        row.pack(fill="x", padx=16, pady=(0, 12))
+        row.pack(fill="x", padx=16, pady=(0, 8))
         entry = self._entry(row)
-        entry.pack(side="left", fill="x", expand=True, ipady=7, padx=(0, 10))
+        entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
         RoundButton(row, button_text, command, width=110, height=36,
                     filled=False, font=self.f_label).pack(side="right")
         return entry
