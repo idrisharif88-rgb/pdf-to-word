@@ -1,6 +1,6 @@
 """Theme colours and the custom round widgets.
 
-Grey ground taken from the Yaru Files icon (#A0A0A0) with dark-green
+Grey ground based on the Yaru Files icon, a shade darker, with dark-green
 actions. Fields are grey too, set apart only by a darker border.
 """
 from __future__ import annotations
@@ -8,22 +8,22 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-BG = "#A0A0A0"           # window background (Yaru Files icon grey)
+BG = "#888888"           # window background (darker Files-icon grey)
 CARD = BG                # no panels: everything sits on the one grey
 FIELD = BG               # fields are the same grey, outlined only
-FIELD_BORDER = "#7A7A7A"
+FIELD_BORDER = "#5E5E5E"
 GREEN = "#0B5D3B"        # primary dark green
 GREEN_HOVER = "#0F7549"
 GREEN_PRESSED = "#084A2F"
-GREEN_LIGHT = "#B9CDBF"  # hover tint behind outline buttons
+GREEN_LIGHT = "#9FB5A6"  # hover tint behind outline buttons
 TEXT = "#1C1C1C"
-MUTED = "#383838"
-BORDER = "#8E8E8E"
-DISABLED = "#8A8A8A"
-DISABLED_TEXT = "#D6D6D6"
-TRACK_OFF = "#7C7C7C"
-TRACK_DISABLED = "#929292"
-TROUGH = "#8A8A8A"
+MUTED = "#2A2A2A"
+BORDER = "#6E6E6E"
+DISABLED = "#737373"
+DISABLED_TEXT = "#B5B5B5"
+TRACK_OFF = "#666666"
+TRACK_DISABLED = "#7A7A7A"
+TROUGH = "#727272"
 
 
 def pick_font_family(root) -> str:
