@@ -18,7 +18,7 @@ from ..desktop import (NoNativeDialog, native_file_dialog, notify_sound,
                        reveal_in_file_manager)
 from ..pipeline import ConversionJob, JobCancelled
 from ..text import parse_page_range
-from .widgets import (BG, BORDER, CARD, FIELD, FIELD_BORDER, GREEN, MUTED, TEXT,
+from .widgets import (ACCENT, BG, BORDER, CARD, FIELD, FIELD_BORDER, GREEN, MUTED, TEXT,
                       RoundButton, Toggle, apply_theme, pick_font_family)
 
 log = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class OCRApp:
         root, s = self.root, self.settings
         header = tk.Frame(root, bg=BG)
         header.pack(fill="x")
-        tk.Label(header, text="PDF  →  Word", bg=BG, fg=GREEN,
+        tk.Label(header, text="PDF  →  Word", bg=BG, fg=ACCENT,
                  font=self.f_title).pack(anchor="w", padx=24, pady=(16, 0))
         tk.Label(header, text="Arabic OCR · Google Document AI", bg=BG,
                  fg=MUTED, font=self.f_sub).pack(anchor="w", padx=24,
@@ -129,7 +129,7 @@ class OCRApp:
         status = tk.Frame(body, bg=BG)
         status.grid(row=3, column=0, columnspan=2, sticky="ew")
         self.status_label = tk.Label(status, text="Ready.", anchor="w",
-                                     fg=GREEN, bg=BG, font=self.f_label)
+                                     fg=ACCENT, bg=BG, font=self.f_label)
         self.status_label.pack(fill="x", pady=(0, 6))
         self.progress_var = tk.DoubleVar()
         ttk.Progressbar(status, variable=self.progress_var, maximum=100,
@@ -152,7 +152,7 @@ class OCRApp:
 
     def _card(self, parent, title):
         card = tk.Frame(parent, bg=CARD)  # a group, not a box
-        tk.Label(card, text=title, bg=CARD, fg=GREEN, font=self.f_card)\
+        tk.Label(card, text=title, bg=CARD, fg=ACCENT, font=self.f_card)\
             .pack(anchor="w", padx=16, pady=(12, 8))
         return card
 
@@ -166,9 +166,9 @@ class OCRApp:
                      font=self.f_hint).pack(side="left")
 
     def _entry(self, parent):
-        return tk.Entry(parent, bg=FIELD, fg=TEXT, insertbackground=GREEN,
+        return tk.Entry(parent, bg=FIELD, fg=TEXT, insertbackground=ACCENT,
                         relief="flat", highlightthickness=1,
-                        highlightbackground=FIELD_BORDER, highlightcolor=GREEN,
+                        highlightbackground=FIELD_BORDER, highlightcolor=ACCENT,
                         font=self.f_body)
 
     def _field_row(self, parent, label, button_text, command):

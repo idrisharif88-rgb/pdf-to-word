@@ -1,6 +1,6 @@
 """Theme colours and the custom round widgets.
 
-Grey ground based on the Yaru Files icon, a shade darker, with dark-green
+Grey ground based on the Yaru Files icon, darkened, with dark-green
 actions. Fields are grey too, set apart only by a darker border.
 """
 from __future__ import annotations
@@ -8,22 +8,23 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-BG = "#888888"           # window background (darker Files-icon grey)
+BG = "#6E6E6E"           # window background (dark Files-icon grey)
 CARD = BG                # no panels: everything sits on the one grey
 FIELD = BG               # fields are the same grey, outlined only
-FIELD_BORDER = "#5E5E5E"
+FIELD_BORDER = "#4A4A4A"
 GREEN = "#0B5D3B"        # primary dark green
 GREEN_HOVER = "#0F7549"
 GREEN_PRESSED = "#084A2F"
-GREEN_LIGHT = "#9FB5A6"  # hover tint behind outline buttons
-TEXT = "#1C1C1C"
-MUTED = "#2A2A2A"
-BORDER = "#6E6E6E"
-DISABLED = "#737373"
-DISABLED_TEXT = "#B5B5B5"
-TRACK_OFF = "#666666"
-TRACK_DISABLED = "#7A7A7A"
-TROUGH = "#727272"
+GREEN_LIGHT = "#5F7A69"  # hover tint behind outline buttons
+ACCENT = "#A8E6C3"       # light green for text/outlines on the dark grey
+TEXT = "#F4F4F4"
+MUTED = "#D2D2D2"
+BORDER = "#585858"
+DISABLED = "#5C5C5C"
+DISABLED_TEXT = "#9A9A9A"
+TRACK_OFF = "#4F4F4F"
+TRACK_DISABLED = "#606060"
+TROUGH = "#575757"
 
 
 def pick_font_family(root) -> str:
@@ -84,7 +85,7 @@ class RoundButton(tk.Canvas):
             outline, fg = fill, "#FFFFFF"
         else:
             fill = GREEN_LIGHT if (self._hover or self._pressed) else self["bg"]
-            outline, fg = GREEN, GREEN
+            outline, fg = ACCENT, ACCENT
         round_rect(self, 2, 2, self._bw - 2, self._bh - 2, (self._bh - 4) / 2,
                    fill=fill, outline=outline, width=2)
         self.create_text(self._bw / 2, self._bh / 2, text=self._text,
@@ -148,4 +149,4 @@ def apply_theme(root):
                     lightcolor=GREEN, darkcolor=GREEN, thickness=10)
     style.configure("Log.Vertical.TScrollbar", troughcolor=CARD,
                     background=BORDER, bordercolor=CARD,
-                    arrowcolor=GREEN)
+                    arrowcolor=ACCENT)
