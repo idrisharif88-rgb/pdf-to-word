@@ -123,7 +123,7 @@ class OCRApp:
             ("Exact layout", self.exact_var,
              "Looks like the scan; text does not reflow", True),
             ("Mark source pages", self.marker_var,
-             "Small \"صفحة N\" at the top of each page", True),
+             "Original page number at the top of each page", True),
             ("Extract tables (Form Parser)", self.tables_var,
              "Extra paid request per batch" if has_form
              else "Set GCP_FORM_PROCESSOR_ID in .env to enable", has_form),
