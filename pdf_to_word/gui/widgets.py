@@ -9,8 +9,8 @@ import tkinter as tk
 from tkinter import ttk
 
 BG = "#A0A0A0"           # window background (Yaru Files icon grey)
-CARD = "#AAAAAA"         # card background
-FIELD = "#AAAAAA"        # entry / log background: same grey, no white boxes
+CARD = BG                # no panels: everything sits on the one grey
+FIELD = BG               # fields are the same grey, outlined only
 FIELD_BORDER = "#7A7A7A"
 GREEN = "#0B5D3B"        # primary dark green
 GREEN_HOVER = "#0F7549"

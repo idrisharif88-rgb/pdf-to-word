@@ -61,12 +61,12 @@ class OCRApp:
     # ================================================================ layout
     def _build(self) -> None:
         root, s = self.root, self.settings
-        header = tk.Frame(root, bg=GREEN)
+        header = tk.Frame(root, bg=BG)
         header.pack(fill="x")
-        tk.Label(header, text="PDF  →  Word", bg=GREEN, fg="#FFFFFF",
+        tk.Label(header, text="PDF  →  Word", bg=BG, fg=GREEN,
                  font=self.f_title).pack(anchor="w", padx=24, pady=(16, 0))
-        tk.Label(header, text="Arabic OCR · Google Document AI", bg=GREEN,
-                 fg="#CFE6D8", font=self.f_sub).pack(anchor="w", padx=24,
+        tk.Label(header, text="Arabic OCR · Google Document AI", bg=BG,
+                 fg=MUTED, font=self.f_sub).pack(anchor="w", padx=24,
                                                      pady=(0, 16))
 
         body = tk.Frame(root, bg=BG)
@@ -151,8 +151,7 @@ class OCRApp:
         self.log_box.pack(side="left", fill="both", expand=True)
 
     def _card(self, parent, title):
-        card = tk.Frame(parent, bg=CARD, highlightthickness=1,
-                        highlightbackground=BORDER)
+        card = tk.Frame(parent, bg=CARD)  # a group, not a box
         tk.Label(card, text=title, bg=CARD, fg=GREEN, font=self.f_card)\
             .pack(anchor="w", padx=16, pady=(12, 8))
         return card
