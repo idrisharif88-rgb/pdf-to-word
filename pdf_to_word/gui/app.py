@@ -18,8 +18,7 @@ from ..desktop import (NoNativeDialog, native_file_dialog, notify_sound,
                        reveal_in_file_manager)
 from ..pipeline import ConversionJob, JobCancelled
 from ..text import parse_page_range
-from .widgets import (BG, BORDER, CARD, FIELD, MUTED, TEXT, WHITE, RoundBox,
-                      RoundEntry,
+from .widgets import (BG, CARD, FIELD, MUTED, TEXT, RoundBox, RoundEntry,
                       RoundButton, Toggle, apply_theme, pick_font_family)
 
 log = logging.getLogger(__name__)
@@ -32,6 +31,7 @@ class OCRApp:
         self.root = root
         self.settings = settings
         self.job: Optional[ConversionJob] = None
+        root.withdraw()  # stay hidden until sized and centred: no jump
         self._picking = False  # one file chooser at a time
         apply_theme(root)
         root.title("PDF to Word — Arabic OCR")
@@ -50,13 +50,16 @@ class OCRApp:
         self._fit_window()
 
     def _fit_window(self) -> None:
-        """Open just tall enough for the content, never taller than the
-        screen allows."""
-        self.root.update_idletasks()
-        width = max(920, self.root.winfo_reqwidth())
-        height = min(self.root.winfo_reqheight(),
-                     self.root.winfo_screenheight() - 80)
-        self.root.geometry(f"{width}x{height}")
+        """Size the window to its content (capped to the screen), place it
+        in the centre, then show it, so it never appears and then moves."""
+        root = self.root
+        root.update_idletasks()
+        width = max(920, root.winfo_reqwidth())
+        height = min(root.winfo_reqheight(), root.winfo_screenheight() - 80)
+        x = max(0, (root.winfo_screenwidth() - width) // 2)
+        y = max(0, (root.winfo_screenheight() - height) // 2)
+        root.geometry(f"{width}x{height}+{x}+{y}")
+        root.deiconify()
 
     def _set_window_icon(self) -> None:
         """Window and dock icon (Scan to text); kept on self so Tk's
@@ -121,7 +124,9 @@ class OCRApp:
              "Extra paid request per batch" if has_form
              else "Set GCP_FORM_PROCESSOR_ID in .env to enable", has_form),
         ):
-            self._option_box(options, text, var, hint, enabled)
+            Toggle(options, text, var, hint=hint, enabled=enabled,
+                   font=self.f_label, hint_font=self.f_hint)\
+                .pack(anchor="w", padx=16, pady=(4, 8))
 
         actions = tk.Frame(body, bg=BG)
         actions.grid(row=2, column=0, columnspan=2, pady=(2, 6))
@@ -158,22 +163,6 @@ class OCRApp:
         scroll.pack(side="right", fill="y")
         self.log_box.pack(side="left", fill="both", expand=True)
         log_frame.host(inner)
-
-    def _option_box(self, parent, text, var, hint, enabled) -> None:
-        """One option as a rounded box; its outline turns white when on and
-        a click anywhere in the box flips it."""
-        box = RoundBox(parent, height=50, radius=16, pad=6)
-        box.pack(fill="x", padx=16, pady=(0, 6))
-        toggle = box.host(Toggle(box, text, var, hint=hint, enabled=enabled,
-                                 font=self.f_label, hint_font=self.f_hint))
-        box.bind("<Button-1>", toggle._toggle)
-        if enabled:
-            box.configure(cursor="hand2")
-
-        def outline(*_):
-            box.set_border(WHITE if var.get() and enabled else BORDER)
-        var.trace_add("write", outline)
-        outline()
 
     def _card(self, parent, title):
         card = tk.Frame(parent, bg=CARD)  # a group, not a box
