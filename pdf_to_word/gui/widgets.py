@@ -114,15 +114,18 @@ class Toggle(tk.Frame):
         cursor = "hand2" if enabled else "arrow"
         self.cv = tk.Canvas(self, width=46, height=26, bg=parent["bg"],
                             highlightthickness=0, cursor=cursor)
-        self.cv.grid(row=0, column=0, rowspan=2, padx=(0, 12), sticky="n")
+        self.cv.grid(row=0, column=0, rowspan=2, padx=(0, 12))
         label = tk.Label(self, text=text, bg=parent["bg"],
                          fg=TEXT if enabled else MUTED, font=font,
                          cursor=cursor)
         label.grid(row=0, column=1, sticky="w")
+        widgets = [self, self.cv, label]
         if hint:
-            tk.Label(self, text=hint, bg=parent["bg"], fg=MUTED,
-                     font=hint_font).grid(row=1, column=1, sticky="w")
-        for widget in (self.cv, label):
+            hint_label = tk.Label(self, text=hint, bg=parent["bg"], fg=MUTED,
+                                  font=hint_font, cursor=cursor)
+            hint_label.grid(row=1, column=1, sticky="w")
+            widgets.append(hint_label)
+        for widget in widgets:
             widget.bind("<Button-1>", self._toggle)
         variable.trace_add("write", lambda *a: self._draw())
         self._draw()
@@ -178,6 +181,10 @@ class RoundBox(tk.Canvas):
         child.bind("<FocusOut>", lambda e: self._focus(False), add="+")
         self._draw()
         return child
+
+    def set_border(self, color: str) -> None:
+        self._border = color
+        self._draw()
 
     def _focus(self, on):
         self._focused = on

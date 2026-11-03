@@ -18,7 +18,8 @@ from ..desktop import (NoNativeDialog, native_file_dialog, notify_sound,
                        reveal_in_file_manager)
 from ..pipeline import ConversionJob, JobCancelled
 from ..text import parse_page_range
-from .widgets import (BG, CARD, FIELD, MUTED, TEXT, RoundBox, RoundEntry,
+from .widgets import (BG, BORDER, CARD, FIELD, MUTED, TEXT, WHITE, RoundBox,
+                      RoundEntry,
                       RoundButton, Toggle, apply_theme, pick_font_family)
 
 log = logging.getLogger(__name__)
@@ -120,9 +121,7 @@ class OCRApp:
              "Extra paid request per batch" if has_form
              else "Set GCP_FORM_PROCESSOR_ID in .env to enable", has_form),
         ):
-            Toggle(options, text, var, hint=hint, enabled=enabled,
-                   font=self.f_label, hint_font=self.f_hint)\
-                .pack(anchor="w", padx=16, pady=(0, 6))
+            self._option_box(options, text, var, hint, enabled)
 
         actions = tk.Frame(body, bg=BG)
         actions.grid(row=2, column=0, columnspan=2, pady=(2, 6))
@@ -159,6 +158,22 @@ class OCRApp:
         scroll.pack(side="right", fill="y")
         self.log_box.pack(side="left", fill="both", expand=True)
         log_frame.host(inner)
+
+    def _option_box(self, parent, text, var, hint, enabled) -> None:
+        """One option as a rounded box; its outline turns white when on and
+        a click anywhere in the box flips it."""
+        box = RoundBox(parent, height=50, radius=16, pad=6)
+        box.pack(fill="x", padx=16, pady=(0, 6))
+        toggle = box.host(Toggle(box, text, var, hint=hint, enabled=enabled,
+                                 font=self.f_label, hint_font=self.f_hint))
+        box.bind("<Button-1>", toggle._toggle)
+        if enabled:
+            box.configure(cursor="hand2")
+
+        def outline(*_):
+            box.set_border(WHITE if var.get() and enabled else BORDER)
+        var.trace_add("write", outline)
+        outline()
 
     def _card(self, parent, title):
         card = tk.Frame(parent, bg=CARD)  # a group, not a box
