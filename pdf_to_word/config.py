@@ -105,6 +105,8 @@ class Settings:
     page_image_dpi: int = 150
     # Poetry needs the OCR line breaks; prose does not.
     keep_line_breaks: bool = False
+    # A small "صفحة N" at the top of each page, to trace text to the source.
+    mark_source_pages: bool = False
 
     # --- OCR options chosen per job ---
     enable_quality_scores: bool = True

@@ -76,11 +76,12 @@ class OCRApp:
         root, s = self.root, self.settings
         header = tk.Frame(root, bg=BG)
         header.pack(fill="x")
+        # Title and subtitle share one line to leave room for the log.
         tk.Label(header, text="PDF  →  Word", bg=BG, fg=TEXT,
-                 font=self.f_title).pack(anchor="w", padx=24, pady=(12, 0))
+                 font=self.f_title).pack(side="left", padx=(24, 12),
+                                         pady=(12, 6))
         tk.Label(header, text="Arabic OCR · Google Document AI", bg=BG,
-                 fg=MUTED, font=self.f_sub).pack(anchor="w", padx=24,
-                                                     pady=(0, 16))
+                 fg=MUTED, font=self.f_sub).pack(side="left", pady=(18, 6))
 
         body = tk.Frame(root, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=(6, 10))
@@ -111,6 +112,7 @@ class OCRApp:
         self.quality_var = tk.BooleanVar(value=s.enable_quality_scores)
         self.cleanup_var = tk.BooleanVar(value=s.cleanup)
         self.exact_var = tk.BooleanVar(value=s.exact_layout)
+        self.marker_var = tk.BooleanVar(value=s.mark_source_pages)
         has_form = s.form_parser_available
         self.tables_var = tk.BooleanVar(value=s.extract_tables and has_form)
         for text, var, hint, enabled in (
@@ -120,13 +122,15 @@ class OCRApp:
              "Tidy spacing and OCR noise", True),
             ("Exact layout", self.exact_var,
              "Looks like the scan; text does not reflow", True),
+            ("Mark source pages", self.marker_var,
+             "Small \"صفحة N\" at the top of each page", True),
             ("Extract tables (Form Parser)", self.tables_var,
              "Extra paid request per batch" if has_form
              else "Set GCP_FORM_PROCESSOR_ID in .env to enable", has_form),
         ):
             Toggle(options, text, var, hint=hint, enabled=enabled,
                    font=self.f_label, hint_font=self.f_hint)\
-                .pack(anchor="w", padx=16, pady=(4, 8))
+                .pack(anchor="w", padx=16, pady=(1, 4))
 
         actions = tk.Frame(body, bg=BG)
         actions.grid(row=2, column=0, columnspan=2, pady=(2, 6))
@@ -304,6 +308,7 @@ class OCRApp:
             enable_quality_scores=self.quality_var.get(),
             cleanup=self.cleanup_var.get(),
             exact_layout=self.exact_var.get(),
+            mark_source_pages=self.marker_var.get(),
             extract_tables=self.tables_var.get(),
             image_pages=self.image_pages_entry.get().strip(),
         )

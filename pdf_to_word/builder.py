@@ -8,7 +8,7 @@ from typing import List, Optional, Sequence
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt
+from docx.shared import Pt, RGBColor
 
 from . import pdf_tools
 from .config import Settings
@@ -16,8 +16,9 @@ from .docx_format import (add_footnote_rule, add_positioned_textbox,
                           add_text_with_breaks, format_paragraph,
                           setup_document)
 from .tables import add_tables, anchor_text, table_regions
-from .text import (TextUnit, clean_text_smart, detect_placement, detect_rtl,
-                   heading_level, in_spans, is_footnote, is_ocr_noise,
+from .text import (TextUnit, clean_text_smart, continues_heading,
+                   count_lines, detect_placement, detect_rtl, heading_level,
+                   in_spans, is_folio, is_footnote, is_ocr_noise,
                    parse_page_spec, repeat_key, running_head_texts,
                    unwrap_lines)
 
@@ -38,7 +39,7 @@ def page_text_units(document, page) -> List[TextUnit]:
         right = max((v.x for v in verts), default=1.0)
         height = bottom - top if verts else 0.0
         # The box grows with the number of printed lines; compare one line.
-        line_height = height / max(1, text.count("\n") + 1)
+        line_height = height / count_lines(text)
         units.append(TextUnit(text, line_height, top, bottom, left, right))
     return units
 
@@ -79,6 +80,12 @@ class BatchBuilder:
         heights = [u.line_height for units in self.units for u in units
                    if u.line_height > 0]
         self.median_h = statistics.median(heights) if heights else 0.0
+        # A one-line box has no line spacing, so it is measured against
+        # other one-line boxes, not against the pitch of multi-line text.
+        singles = [u.line_height for units in self.units for u in units
+                   if u.line_count == 1 and len(u.text.strip()) > 1
+                   and not is_folio(u.text, u.top, u.bottom, settings.margin_band)]
+        self.single_h = statistics.median(singles) if len(singles) >= 3 else 0.0
 
     def build(self):
         if self.s.exact_layout:
@@ -103,6 +110,16 @@ class BatchBuilder:
                          "top_margin", "bottom_margin"):
                 setattr(section, edge, Pt(0))
 
+    def _add_page_marker(self, page_number: int) -> None:
+        """Small centred "صفحة N" so text can be traced to the source page."""
+        paragraph = self.doc.add_paragraph()
+        paragraph.add_run(f"صفحة {page_number}")
+        format_paragraph(paragraph, self.s, placement="center",
+                         size_scale=0.6)
+        for run in paragraph.runs:
+            run.bold = False
+            run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+
     def _table_source(self, i: int, page):
         """(page, document) to read tables from, or (None, None)."""
         if not self.s.extract_tables:
@@ -119,6 +136,8 @@ class BatchBuilder:
 
         # Chosen by the user, or a page the OCR found almost nothing on.
         chars = sum(len(u.text.strip()) for u in units)
+        if s.mark_source_pages:
+            self._add_page_marker(page_number)
         if page_number in self.image_pages or chars < s.image_fallback_chars:
             if add_page_picture(doc, self.path, page_number, s.page_image_dpi):
                 return
@@ -130,11 +149,15 @@ class BatchBuilder:
                      if s.exact_layout else None)
         rule_added = False
         z = 1
+        last_heading = None  # (unit, paragraph, level, placement)
 
         for u in units:
             if in_spans(u.top, u.bottom, spans):
                 continue  # emitted by add_tables
             if repeat_key(u.text) in self.heads:
+                continue
+            if s.drop_running_heads and is_folio(u.text, u.top, u.bottom,
+                                                 s.margin_band):
                 continue
             text = clean_text_smart(u.text) if s.cleanup else u.text
             if not s.keep_line_breaks:
@@ -150,10 +173,25 @@ class BatchBuilder:
                 z += 1
                 continue
 
+            placement = detect_placement(u.left, u.right)
+            if last_heading is not None:
+                prev, prev_par, prev_level, prev_place = last_heading
+                if continues_heading(prev.top, prev.bottom, prev.line_height,
+                                     prev_place, u.top, placement, text):
+                    prev_par.runs[-1].add_text(" " + text)
+                    format_paragraph(prev_par, s, heading=True,
+                                     placement=prev_place, level=prev_level)
+                    last_heading = (u, prev_par, prev_level, prev_place)
+                    continue
+
             footnote = is_footnote(u.top, u.line_height, self.median_h,
                                    s.footnote_band, s.footnote_max_ratio)
-            level = 0 if footnote else heading_level(
-                u.line_height, self.median_h, text, u.line_count, u.width,
+            ref_h = (self.single_h if u.line_count == 1 and self.single_h
+                     else self.median_h)
+            # Headings never sit in the footnote band at the foot of a page.
+            in_foot = u.top >= s.footnote_band
+            level = 0 if footnote or in_foot else heading_level(
+                u.line_height, ref_h, text, u.line_count, u.width,
                 s.heading_ratio_1, s.heading_ratio_2)
             if footnote and not rule_added:
                 add_footnote_rule(doc)
@@ -163,10 +201,10 @@ class BatchBuilder:
                 style=f"Heading {level}" if level else None)
             add_text_with_breaks(paragraph, text)
             format_paragraph(
-                paragraph, s, heading=bool(level),
-                placement=detect_placement(u.left, u.right),
+                paragraph, s, heading=bool(level), placement=placement,
                 size_scale=s.footnote_size_scale if footnote else 1.0,
                 level=level)
+            last_heading = (u, paragraph, level, placement) if level else None
 
         if s.extract_images and not s.exact_layout:
             for data, rect in pdf_tools.page_figures(

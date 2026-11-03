@@ -162,3 +162,22 @@ def test_client_skips_form_parser_when_disabled(sample_pdf):
 def test_client_requires_ids_from_env():
     with pytest.raises(ValueError, match="GCP_PROJECT_ID, GCP_PROCESSOR_ID"):
         DocumentAIClient(Settings(), client=RecordingGrpc())
+
+
+def test_source_page_markers_and_folios():
+    pages = [[("۱۲", 0.04, 0.05, 0.48, 0.52)] + standard_page(n)[1:] for n in (7, 8, 9)]
+    doc = build_batch_document(dataclasses.replace(BASE, mark_source_pages=True),
+                               "x.pdf", [7, 8, 9], make_ocr_document(pages))
+    texts = [p.text for p in doc.paragraphs if p.text.strip()]
+    assert [t for t in texts if t.startswith("صفحة")] == ["صفحة 7", "صفحة 8", "صفحة 9"]
+    assert "۱۲" not in texts
+
+
+def test_wrapped_heading_is_joined():
+    page = [("عنوان الفصل الطويل", 0.10, 0.15, 0.3, 0.7),
+            ("بقية العنوان", 0.16, 0.18, 0.4, 0.6),
+            (BODY, 0.30, 0.33, 0.1, 0.9), (BODY, 0.40, 0.43, 0.1, 0.9),
+            ("كلمة", 0.50, 0.52, 0.45, 0.55), ("أخرى", 0.60, 0.62, 0.45, 0.55)]
+    doc = build_batch_document(BASE, "x.pdf", [1], make_ocr_document([page]))
+    headings = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
+    assert headings == ["عنوان الفصل الطويل بقية العنوان"]

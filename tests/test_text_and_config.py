@@ -96,3 +96,24 @@ def test_settings_defaults():
     s = Settings.from_env({})
     assert not s.extract_tables and not s.form_parser_available
     assert not s.use_form_parser
+
+
+def test_count_lines_ignores_trailing_newline():
+    from pdf_to_word.text import count_lines
+    assert count_lines("عنوان\n") == 1
+    assert count_lines("سطر\nسطر\n") == 2
+
+
+@pytest.mark.parametrize("text,top,expected", [
+    ("۳۸۸\n", 0.04, True), ("- 12 -", 0.95, True),
+    ("۳۸۸", 0.5, False), ("الفصل 3", 0.04, False)])
+def test_is_folio(text, top, expected):
+    from pdf_to_word.text import is_folio
+    assert is_folio(text, top, top + 0.01, 0.12) is expected
+
+
+def test_continues_heading():
+    from pdf_to_word.text import continues_heading
+    assert continues_heading(0.117, 0.162, 0.044, "center", 0.183, "center", "الباطلة بظهوره")
+    assert not continues_heading(0.117, 0.162, 0.044, "center", 0.30, "center", "بعيد")
+    assert not continues_heading(0.117, 0.162, 0.044, "center", 0.183, "full", "نص")
