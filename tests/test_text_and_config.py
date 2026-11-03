@@ -94,5 +94,5 @@ def test_settings_from_env_types():
 
 def test_settings_defaults():
     s = Settings.from_env({})
-    assert s.extract_tables and not s.form_parser_available
+    assert not s.extract_tables and not s.form_parser_available
     assert not s.use_form_parser

@@ -136,7 +136,7 @@ class RecordingGrpc:
 
 def test_client_requests_have_timeout_retry_and_arabic_hints(sample_pdf):
     settings = dataclasses.replace(BASE, gcp_form_processor_id="form1",
-                                   request_timeout=123)
+                                   extract_tables=True, request_timeout=123)
     grpc = RecordingGrpc()
     client = DocumentAIClient(settings, client=grpc)
     client.ocr(str(sample_pdf), "application/pdf", [1, 2])

@@ -65,7 +65,7 @@ class Settings:
     add_toc: bool = True
 
     # --- Tables ---
-    extract_tables: bool = True
+    extract_tables: bool = False  # Form Parser is an extra paid call; opt in
     # A detected grid this empty is almost always a misread layout.
     table_min_fill: float = 0.45
     table_max_cols: int = 10
