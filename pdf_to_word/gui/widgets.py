@@ -107,12 +107,15 @@ class RoundButton(tk.Canvas):
 class Toggle(tk.Frame):
     """iOS-style switch bound to a BooleanVar, with label and hint line."""
 
+    TRACK_W, TRACK_H = 52, 28
+
     def __init__(self, parent, text, variable, hint="", enabled=True,
                  font=None, hint_font=None):
         super().__init__(parent, bg=parent["bg"])
         self.var, self.enabled = variable, enabled
         cursor = "hand2" if enabled else "arrow"
-        self.cv = tk.Canvas(self, width=46, height=26, bg=parent["bg"],
+        self.cv = tk.Canvas(self, width=self.TRACK_W + 1,
+                            height=self.TRACK_H + 1, bg=parent["bg"],
                             highlightthickness=0, cursor=cursor)
         self.cv.grid(row=0, column=0, rowspan=2, padx=(0, 12))
         label = tk.Label(self, text=text, bg=parent["bg"],
@@ -131,13 +134,19 @@ class Toggle(tk.Frame):
         self._draw()
 
     def _draw(self):
+        """Pill track built from two circles and a bar, so the ends are
+        true semicircles rather than a smoothed polygon."""
         c = self.cv
         c.delete("all")
         on = bool(self.var.get())
         track = (GREEN if on else TRACK_OFF) if self.enabled else TRACK_DISABLED
-        round_rect(c, 1, 1, 45, 25, 12, fill=track, outline="")
-        x = 32 if on else 14
-        c.create_oval(x - 10, 3, x + 10, 23, fill="#FFFFFF", outline="")
+        w, h = self.TRACK_W, self.TRACK_H
+        c.create_oval(0, 0, h, h, fill=track, outline=track)
+        c.create_oval(w - h, 0, w, h, fill=track, outline=track)
+        c.create_rectangle(h / 2, 0, w - h / 2, h, fill=track, outline=track)
+        knob = h - 6
+        x = w - 3 - knob if on else 3
+        c.create_oval(x, 3, x + knob, 3 + knob, fill=WHITE, outline=WHITE)
 
     def _toggle(self, _event=None):
         if self.enabled:
