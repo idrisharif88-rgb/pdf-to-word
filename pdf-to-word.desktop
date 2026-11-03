@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=PDF to Word
+Comment=Arabic OCR: PDF to Word
+Exec="/home/user/projects/pdf-to-word-refactor/.venv/bin/python" -m pdf_to_word
+Path=/home/user/projects/pdf-to-word-refactor
+Icon=/home/user/projects/pdf-to-word-refactor/pdf_to_word/assets/icon.svg
+StartupWMClass=pdf-to-word
+Terminal=false
+Categories=Office;

@@ -1,7 +1,8 @@
 .env
 *.json
-.venv/
+.venv
 __pycache__/
 *.pyc
 ocr_gui.log
 *_part_*.docx
+*.tmp

@@ -1,0 +1,227 @@
+"""Theme colours and the custom round widgets.
+
+Grey ground based on the Yaru Files icon, darkened, with dark-green
+actions. Fields are grey too, set apart only by a darker border.
+"""
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+BG = "#6E6E6E"           # window background (dark Files-icon grey)
+CARD = BG                # no panels: everything sits on the one grey
+FIELD = BG               # fields are the same grey, outlined only
+FIELD_BORDER = "#4A4A4A"
+GREEN = "#0B5D3B"        # primary dark green
+GREEN_HOVER = "#0F7549"
+GREEN_PRESSED = "#084A2F"
+GREEN_LIGHT = "#5F7A69"  # hover tint behind outline buttons
+ACCENT = "#A8E6C3"       # light green for text/outlines on the dark grey
+WHITE = "#FFFFFF"
+TEXT = WHITE
+MUTED = "#D2D2D2"
+BORDER = "#585858"
+DISABLED = "#5C5C5C"
+DISABLED_TEXT = "#9A9A9A"
+TRACK_OFF = "#4F4F4F"
+TRACK_DISABLED = "#606060"
+TROUGH = "#575757"
+
+
+def pick_font_family(root) -> str:
+    from tkinter import font as tkfont
+    available = set(tkfont.families(root))
+    for family in ("Segoe UI", "Ubuntu", "Cantarell", "Noto Sans",
+                   "DejaVu Sans", "Helvetica"):
+        if family in available:
+            return family
+    return "TkDefaultFont"
+
+
+def round_rect(canvas, x1, y1, x2, y2, r, **kw):
+    """Draw a rounded rectangle (a pill when r = height / 2)."""
+    points = [x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r,
+              x2, y2 - r, x2, y2, x2 - r, y2, x1 + r, y2,
+              x1, y2, x1, y2 - r, x1, y1 + r, x1, y1]
+    return canvas.create_polygon(points, smooth=True, **kw)
+
+
+class RoundButton(tk.Canvas):
+    """Pill-shaped button with hover/press states; supports config(state=)."""
+
+    def __init__(self, parent, text, command, width=150, height=42,
+                 filled=True, font=None):
+        super().__init__(parent, width=width, height=height,
+                         bg=parent["bg"], highlightthickness=0,
+                         cursor="hand2")
+        self._text, self._command = text, command
+        self._filled, self._font = filled, font
+        self._bw, self._bh = width, height
+        self._state, self._hover, self._pressed = "normal", False, False
+        self.bind("<Enter>", lambda e: self._set(hover=True))
+        self.bind("<Leave>", lambda e: self._set(hover=False, pressed=False))
+        self.bind("<ButtonPress-1>", lambda e: self._set(pressed=True))
+        self.bind("<ButtonRelease-1>", self._release)
+        self._draw()
+
+    def _set(self, **kw):
+        for key, value in kw.items():
+            setattr(self, "_" + key, value)
+        self._draw()
+
+    def _release(self, event):
+        was_pressed = self._pressed
+        self._set(pressed=False)
+        inside = 0 <= event.x <= self._bw and 0 <= event.y <= self._bh
+        if was_pressed and inside and self._state == "normal" and self._command:
+            self._command()
+
+    def _draw(self):
+        self.delete("all")
+        if self._state == "disabled":
+            fill, outline, fg = DISABLED, DISABLED_TEXT, DISABLED_TEXT
+        elif self._filled:
+            fill = (GREEN_PRESSED if self._pressed
+                    else GREEN_HOVER if self._hover else GREEN)
+            outline, fg = WHITE, WHITE
+        else:
+            fill = GREEN_LIGHT if (self._hover or self._pressed) else self["bg"]
+            outline, fg = WHITE, WHITE
+        round_rect(self, 2, 2, self._bw - 2, self._bh - 2, (self._bh - 4) / 2,
+                   fill=fill, outline=outline, width=2)
+        self.create_text(self._bw / 2, self._bh / 2, text=self._text,
+                         fill=fg, font=self._font)
+
+    def configure(self, cnf=None, **kw):
+        if "state" in kw:
+            self._state = kw.pop("state")
+            super().configure(
+                cursor="hand2" if self._state == "normal" else "arrow")
+            self._draw()
+        if cnf or kw:
+            return super().configure(cnf, **kw)
+
+    config = configure
+
+
+class Toggle(tk.Frame):
+    """iOS-style switch bound to a BooleanVar, with label and hint line."""
+
+    def __init__(self, parent, text, variable, hint="", enabled=True,
+                 font=None, hint_font=None):
+        super().__init__(parent, bg=parent["bg"])
+        self.var, self.enabled = variable, enabled
+        cursor = "hand2" if enabled else "arrow"
+        self.cv = tk.Canvas(self, width=46, height=26, bg=parent["bg"],
+                            highlightthickness=0, cursor=cursor)
+        self.cv.grid(row=0, column=0, rowspan=2, padx=(0, 12))
+        label = tk.Label(self, text=text, bg=parent["bg"],
+                         fg=TEXT if enabled else MUTED, font=font,
+                         cursor=cursor)
+        label.grid(row=0, column=1, sticky="w")
+        widgets = [self, self.cv, label]
+        if hint:
+            hint_label = tk.Label(self, text=hint, bg=parent["bg"], fg=MUTED,
+                                  font=hint_font, cursor=cursor)
+            hint_label.grid(row=1, column=1, sticky="w")
+            widgets.append(hint_label)
+        for widget in widgets:
+            widget.bind("<Button-1>", self._toggle)
+        variable.trace_add("write", lambda *a: self._draw())
+        self._draw()
+
+    def _draw(self):
+        c = self.cv
+        c.delete("all")
+        on = bool(self.var.get())
+        track = (GREEN if on else TRACK_OFF) if self.enabled else TRACK_DISABLED
+        round_rect(c, 1, 1, 45, 25, 12, fill=track, outline="")
+        x = 32 if on else 14
+        c.create_oval(x - 10, 3, x + 10, 23, fill="#FFFFFF", outline="")
+
+    def _toggle(self, _event=None):
+        if self.enabled:
+            self.var.set(not self.var.get())
+
+
+def apply_theme(root):
+    root.configure(bg=BG)
+    style = ttk.Style()
+    style.theme_use("clam")
+    style.configure("Green.Horizontal.TProgressbar", troughcolor=TROUGH,
+                    background=GREEN, bordercolor=TROUGH,
+                    lightcolor=GREEN, darkcolor=GREEN, thickness=10)
+    style.configure("Log.Vertical.TScrollbar", troughcolor=CARD,
+                    background=BORDER, bordercolor=CARD,
+                    arrowcolor=WHITE)
+
+
+class RoundBox(tk.Canvas):
+    """Rounded outline that hosts one child widget (an Entry or Text).
+
+    Tk widgets cannot have rounded corners themselves, so the child is drawn
+    borderless inside a canvas that paints the rounded border and turns the
+    border ``focus_color`` while the child has keyboard focus.
+    """
+
+    def __init__(self, parent, height=None, radius=12, pad=8,
+                 border=BORDER, focus_color=WHITE):
+        kw = {"height": height} if height else {}
+        super().__init__(parent, bg=parent["bg"], highlightthickness=0, **kw)
+        self._radius, self._pad = radius, pad
+        self._border, self._focus_color = border, focus_color
+        self._focused = False
+        self.child = None
+        self.bind("<Configure>", lambda e: self._draw())
+
+    def host(self, child):
+        self.child = child
+        self._win = self.create_window(0, 0, window=child, anchor="nw")
+        child.bind("<FocusIn>", lambda e: self._focus(True), add="+")
+        child.bind("<FocusOut>", lambda e: self._focus(False), add="+")
+        self._draw()
+        return child
+
+    def set_border(self, color: str) -> None:
+        self._border = color
+        self._draw()
+
+    def _focus(self, on):
+        self._focused = on
+        self._draw()
+
+    def _draw(self):
+        w, h = self.winfo_width(), self.winfo_height()
+        tk.Canvas.delete(self, "frame")  # RoundEntry overrides delete()
+        if w < 4 or h < 4:
+            return
+        r = min(self._radius, h / 2 - 1)
+        color = self._focus_color if self._focused else self._border
+        round_rect(self, 1, 1, w - 1, h - 1, r, fill=self["bg"],
+                   outline=color, width=1.5, tags="frame")
+        self.tag_lower("frame")
+        if self.child is not None:
+            p = self._pad
+            self.coords(self._win, p + r / 3, p / 2)
+            self.itemconfigure(self._win, width=max(1, w - 2 * (p + r / 3)),
+                               height=max(1, h - p))
+
+
+class RoundEntry(RoundBox):
+    """A single-line text field with rounded corners; behaves like Entry
+    for get/insert/delete."""
+
+    def __init__(self, parent, font=None, height=38):
+        super().__init__(parent, height=height, radius=height / 2 - 1)
+        self.entry = self.host(tk.Entry(
+            self, bg=FIELD, fg=TEXT, insertbackground=WHITE, relief="flat",
+            bd=0, highlightthickness=0, font=font))
+
+    def get(self):
+        return self.entry.get()
+
+    def insert(self, index, text):
+        return self.entry.insert(index, text)
+
+    def delete(self, first, last=None):
+        return self.entry.delete(first, last)
