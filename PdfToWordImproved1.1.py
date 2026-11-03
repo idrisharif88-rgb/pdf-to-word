@@ -45,9 +45,9 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "your-gcp-project-id")
+GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "")
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "eu")
-GCP_PROCESSOR_ID = os.environ.get("GCP_PROCESSOR_ID", "your-ocr-processor-id")
+GCP_PROCESSOR_ID = os.environ.get("GCP_PROCESSOR_ID", "")
 # Optional: path to a service-account JSON key. When unset, Application
 # Default Credentials are used (gcloud auth application-default login).
 GCP_CREDENTIALS_FILE = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")

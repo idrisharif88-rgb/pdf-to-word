@@ -34,9 +34,10 @@ def _parse_bool(value: str) -> bool:
 @dataclass(frozen=True)
 class Settings:
     # --- Google Cloud ---
-    gcp_project_id: str = "your-gcp-project-id"
+    # No defaults: your own IDs live only in .env, which git ignores.
+    gcp_project_id: str = ""
     gcp_location: str = "eu"
-    gcp_processor_id: str = "your-ocr-processor-id"
+    gcp_processor_id: str = ""
     # Optional Form Parser processor. A Document OCR processor returns no
     # tables at all, so table extraction needs a Form Parser to point at.
     gcp_form_processor_id: str = ""

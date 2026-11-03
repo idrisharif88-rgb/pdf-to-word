@@ -12,7 +12,8 @@ from pdf_to_word.ocr_client import DocumentAIClient
 from pdf_to_word.pdf_tools import extract_pages
 from pdf_to_word.pipeline import ConversionJob, JobCancelled
 
-BASE = Settings(native_convert=False, extract_images=False, add_toc=False,
+BASE = Settings(gcp_project_id="test-project", gcp_processor_id="test-ocr",
+                native_convert=False, extract_images=False, add_toc=False,
                 batch_size=5, max_workers=2)
 
 
@@ -156,3 +157,8 @@ def test_client_skips_form_parser_when_disabled(sample_pdf):
     client = DocumentAIClient(settings, client=grpc)
     assert client.tables(str(sample_pdf), "application/pdf", [1]) is None
     assert grpc.requests == []
+
+
+def test_client_requires_ids_from_env():
+    with pytest.raises(ValueError, match="GCP_PROJECT_ID, GCP_PROCESSOR_ID"):
+        DocumentAIClient(Settings(), client=RecordingGrpc())
