@@ -13,7 +13,8 @@ from typing import Optional
 
 from .. import pdf_tools
 from ..config import Settings
-from ..desktop import notify_sound, reveal_in_file_manager
+from ..desktop import (NoNativeDialog, native_file_dialog, notify_sound,
+                       reveal_in_file_manager)
 from ..pipeline import ConversionJob, JobCancelled
 from ..text import parse_page_range
 from .widgets import (BG, BORDER, CARD, FIELD, GREEN, MUTED, TEXT,
@@ -28,6 +29,7 @@ class OCRApp:
         self.root = root
         self.settings = settings
         self.job: Optional[ConversionJob] = None
+        self._picking = False  # one file chooser at a time
         apply_theme(root)
         root.title("PDF to Word — Arabic OCR")
         root.geometry("920x800")
@@ -195,12 +197,61 @@ class OCRApp:
         self.cancel_btn.config(state="normal" if running else "disabled")
 
     # ================================================================ actions
-    def browse_file(self) -> None:
-        patterns = " ".join(f"*{s}" for s in pdf_tools.SUPPORTED_SUFFIXES)
-        filename = filedialog.askopenfilename(
-            filetypes=[("PDF or image", patterns)])
-        if not filename:
+    # --- file pickers: the desktop's own chooser, Tk's as a fallback ---
+    def _pick_file(self, title: str, initial: str, save: bool, filters,
+                   on_chosen) -> None:
+        """Open a chooser without freezing the window; ``on_chosen(path)``
+        runs on the Tk thread only when a file was picked."""
+        if self._picking:
             return
+        self._picking = True
+
+        def work():
+            try:
+                path = native_file_dialog(title, initial, save, filters)
+            except NoNativeDialog:
+                self._ui(tk_fallback)
+                return
+            self._ui(finish, path)
+
+        def tk_fallback():
+            types = [(label, " ".join(p)) for label, p in filters]
+            folder = initial if os.path.isdir(initial) else os.path.dirname(initial)
+            kwargs = dict(title=title, filetypes=types,
+                          initialdir=folder or os.path.expanduser("~"))
+            if save:
+                path = filedialog.asksaveasfilename(
+                    defaultextension=".docx",
+                    initialfile=os.path.basename(initial)
+                    if not os.path.isdir(initial) else "", **kwargs)
+            else:
+                path = filedialog.askopenfilename(**kwargs)
+            finish(path)
+
+        def finish(path):
+            self._picking = False
+            if path:
+                on_chosen(path)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _start_folder(self, entry) -> str:
+        current = os.path.expanduser(entry.get().strip())
+        folder = os.path.dirname(current) if current else ""
+        if folder and os.path.isdir(folder):
+            return folder
+        downloads = os.path.expanduser("~/Downloads")
+        return downloads if os.path.isdir(downloads) else os.path.expanduser("~")
+
+    def browse_file(self) -> None:
+        patterns = [f"*{s}" for s in pdf_tools.SUPPORTED_SUFFIXES]
+        patterns += [p.upper() for p in patterns]
+        self._pick_file("Choose a PDF or image", self._start_folder(self.file_entry),
+                        save=False,
+                        filters=[("PDF or image", patterns), ("All files", ["*"])],
+                        on_chosen=self._set_input)
+
+    def _set_input(self, filename: str) -> None:
         self.file_entry.delete(0, tk.END)
         self.file_entry.insert(0, filename)
         stem = os.path.splitext(os.path.basename(filename))[0]
@@ -210,14 +261,18 @@ class OCRApp:
         self.log(f"Output folder: {os.path.dirname(filename)}")
 
     def choose_output(self) -> None:
-        current = self.output_entry.get().strip()
-        filename = filedialog.asksaveasfilename(
-            defaultextension=".docx", filetypes=[("Word document", "*.docx")],
-            initialdir=os.path.dirname(current) if current else None,
-            initialfile=os.path.basename(current) if current else "")
-        if filename:
-            self.output_entry.delete(0, tk.END)
-            self.output_entry.insert(0, filename)
+        current = os.path.expanduser(self.output_entry.get().strip())
+        initial = current if current and os.path.isdir(os.path.dirname(current)) \
+            else self._start_folder(self.output_entry)
+        self._pick_file("Save Word file as", initial, save=True,
+                        filters=[("Word document", ["*.docx"])],
+                        on_chosen=self._set_output)
+
+    def _set_output(self, filename: str) -> None:
+        if not filename.lower().endswith(".docx"):
+            filename += ".docx"
+        self.output_entry.delete(0, tk.END)
+        self.output_entry.insert(0, filename)
 
     def _job_settings(self) -> Settings:
         """This run's settings: a copy, so a running job never sees edits."""
